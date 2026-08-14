@@ -1,0 +1,16 @@
+[project]
+sub_id = "49aabbf2"
+name = "ubuntu-controller"
+requires = ["nodejs-24"]
+project_type = "app"
+version = "0.0.32"
+
+[preview]
+preview_enable = "disabled"
+
+[deploy]
+build = ["bash", "scripts/build-apk.sh"]
+run = ["echo", "APK built, sideload to TV box"]
+
+[subprojects]
+path = ["."]

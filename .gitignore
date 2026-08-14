@@ -18,6 +18,24 @@ __pycache__/
 .next
 .nuxt
 .turbo
+
+# Android
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.ap_
+*.dex
+*.class
+gen-external-apklibs
+out
+bin
 .vercel
 .parcel-cache
 .cache
