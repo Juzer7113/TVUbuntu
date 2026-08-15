@@ -11,8 +11,8 @@ android {
         applicationId = "com.ubuntucontroller"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     buildTypes {
@@ -23,6 +23,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 使用 debug 签名，sideload 场景下可直接 adb install（不上架商店）
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

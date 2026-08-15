@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 日志/配置/取消等次级按钮文字：未选中灰，选中白（加粗由代码处理），禁用半透明灰 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#408899AA" />
+    <item android:state_focused="true" android:color="@android:color/white" />
+    <item android:color="@color/text_secondary" />
+</selector>

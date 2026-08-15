@@ -1,21 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 停止按钮：未选中深色底，选中提亮+白边框高亮，按下微亮，禁用灰 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/btn_disabled_bg" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/btn_stop_pressed" />
+            <solid android:color="@color/btn_bg_pressed" />
             <corners android:radius="12dp" />
         </shape>
     </item>
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/btn_stop_pressed" />
+            <solid android:color="@color/btn_bg_focused" />
             <corners android:radius="12dp" />
-            <stroke android:width="2dp" android:color="@android:color/white" />
+            <stroke android:width="3dp" android:color="@color/focus_border" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="@color/btn_stop_bg" />
+            <solid android:color="@color/btn_bg_normal" />
             <corners android:radius="12dp" />
         </shape>
     </item>

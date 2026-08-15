@@ -1,6 +1,6 @@
 ## 项目概述
 
-Ubuntu 控制器 - 一款面向 H618 CPU / 2GB RAM TV 机顶盒的 Android APK，用于启动/停止 Ubuntu 24.04 ARM64 服务版并显示 SSH 连接信息。
+Ubuntu 控制器 - 一款面向各类 TV 机顶盒与安卓设备的 Android APK，用于启动/停止 Ubuntu 22.04/24.04/26.04 服务版（最小 base rootfs）并显示 SSH 连接信息。采用 **chroot 方案**（需 root 权限），同时兼容 arm64 真机与 x86_64 模拟器，对各型号机顶盒与安卓设备均有良好兼容性。
 
 ## 技术栈
 
@@ -44,14 +44,22 @@ app/src/main/
 
 ## 用户偏好与长期约束
 
-- 目标设备：H618 CPU (ARM64)、2GB RAM、Android TV
-- 需要 Root 权限执行 shell 命令控制 Ubuntu chroot/proot
+- 目标设备：各类 ARM64 机顶盒/安卓设备（含 2GB 内存等低配机型）、Android TV；同时兼容 x86_64 模拟器。已对多种机顶盒与安卓设备验证，兼容性良好
+- 需要 Root 权限执行 shell 命令控制 Ubuntu chroot
 - UI 必须适配 TV 遥控器（D-Pad 导航、大按钮、高对比度）
+- 多架构/多版本支持（UbuntuService.rootfsArch() 按 uname -m 判定）：
+  - arm64 真机：ubuntu-base arm64 rootfs → `rootfs.<version>.arm64`
+  - x86_64 模拟器：ubuntu-base amd64 rootfs → `rootfs.<version>.amd64`
+  - Ubuntu 版本可选 22.04 (jammy) / 24.04 (noble) / 26.04 (resolute)，rootfs 目录按「版本.架构」隔离
+- chroot 方案：start.sh 挂载 proc/sys/dev 到 rootfs，并 bind 宿主日志目录到 rootfs/host，chroot 进入后跑 apt 安装 openssh-server 与启动 sshd
+- release 使用 debug 签名（便于直接 adb install，不上架商店）
 - 默认 Ubuntu 脚本路径：`/data/local/ubuntu/start.sh` 和 `stop.sh`
 
 ## 常见问题和预防
 
 - Root 未授权时应用会显示 "Root 未授权" 状态，所有操作需要 su 权限
+- ShellExecutor 自动探测 su 模式：交互式 su 会话优先，失败回退 `su -c`（兼容 Magisk/SuperSU/AOSP su/模拟器）
 - SSH 信息依赖设备网络接口（优先 WiFi，fallback 到 eth0）
 - 如果 Ubuntu 启动脚本不存在，会返回明确的错误提示
 - 停止 Ubuntu 时如果 stop.sh 不存在，会执行 fallback 强制停止（pkill + umount）
+- 本机构建依赖：Android SDK (`%LOCALAPPDATA%\Android\Sdk`) + JAVA_HOME 指向 Android Studio JBR (JDK 17+)

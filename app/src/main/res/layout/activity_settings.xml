@@ -20,6 +20,176 @@
             android:textStyle="bold"
             android:layout_marginBottom="32dp" />
 
+        <!-- Ubuntu Version -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_ubuntu_version"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <RadioGroup
+            android:id="@+id/rgUbuntuVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="24dp">
+
+            <RadioButton
+                android:id="@+id/rbUbuntu22"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ubuntu 22.04"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/rbArchAuto"
+                android:nextFocusRight="@id/rbUbuntu24" />
+
+            <RadioButton
+                android:id="@+id/rbUbuntu24"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
+                android:text="Ubuntu 24.04"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/rbArchAuto"
+                android:nextFocusLeft="@id/rbUbuntu22"
+                android:nextFocusRight="@id/rbUbuntu26" />
+
+            <RadioButton
+                android:id="@+id/rbUbuntu26"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
+                android:text="Ubuntu 26.04"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/rbArchAuto"
+                android:nextFocusLeft="@id/rbUbuntu24" />
+        </RadioGroup>
+
+        <!-- CPU Architecture -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_arch"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <RadioGroup
+            android:id="@+id/rgArch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="24dp">
+
+            <RadioButton
+                android:id="@+id/rbArchAuto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="自动（推荐）"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/rbUbuntu26"
+                android:nextFocusDown="@id/rbArchAmd64" />
+
+            <RadioButton
+                android:id="@+id/rbArchAmd64"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="amd64（x86_64 64位）"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/rbArchAuto"
+                android:nextFocusDown="@id/rbArchArm64" />
+
+            <RadioButton
+                android:id="@+id/rbArchArm64"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="arm64（ARM 64位）"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/rbArchAmd64"
+                android:nextFocusDown="@id/rbArchArmhf" />
+
+            <RadioButton
+                android:id="@+id/rbArchArmhf"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="armhf（ARM 32位）"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/rbArchArm64"
+                android:nextFocusDown="@id/swAutoStart" />
+        </RadioGroup>
+
+        <!-- Auto Start -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/setting_auto_start"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp" />
+
+            <Switch
+                android:id="@+id/swAutoStart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/rbArchArmhf"
+                android:nextFocusDown="@id/etStartScript" />
+        </LinearLayout>
+
         <!-- Start Script Path -->
         <TextView
             android:layout_width="wrap_content"
@@ -42,7 +212,9 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:layout_marginBottom="20dp"
-            android:importantForAutofill="no" />
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/swAutoStart"
+            android:nextFocusDown="@id/etStopScript" />
 
         <!-- Stop Script Path -->
         <TextView
@@ -66,7 +238,9 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:layout_marginBottom="20dp"
-            android:importantForAutofill="no" />
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etStartScript"
+            android:nextFocusDown="@id/etSshPort" />
 
         <!-- SSH Port -->
         <TextView
@@ -90,7 +264,9 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:layout_marginBottom="20dp"
-            android:importantForAutofill="no" />
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etStopScript"
+            android:nextFocusDown="@id/etSshUser" />
 
         <!-- SSH Username -->
         <TextView
@@ -113,8 +289,36 @@
             android:singleLine="true"
             android:focusable="true"
             android:focusableInTouchMode="true"
-            android:layout_marginBottom="32dp"
-            android:importantForAutofill="no" />
+            android:layout_marginBottom="20dp"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etSshPort"
+            android:nextFocusDown="@id/etSshPassword" />
+
+        <!-- SSH Password -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_ssh_password"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etSshPassword"
+            android:layout_width="300dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="textPassword"
+            android:singleLine="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:layout_marginBottom="20dp"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etSshUser"
+            android:nextFocusDown="@id/btnSave" />
 
         <!-- Buttons -->
         <LinearLayout
@@ -130,9 +334,12 @@
                 android:layout_marginEnd="12dp"
                 android:background="@drawable/btn_secondary"
                 android:text="@string/btn_cancel"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/text_btn_secondary"
                 android:textSize="16sp"
-                android:focusable="true" />
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/etSshPassword"
+                android:nextFocusRight="@id/btnSave" />
 
             <Button
                 android:id="@+id/btnSave"
@@ -140,10 +347,13 @@
                 android:layout_height="52dp"
                 android:background="@drawable/btn_start"
                 android:text="@string/btn_save"
-                android:textColor="@android:color/white"
+                android:textColor="@color/text_btn_primary"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:focusable="true" />
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/etSshPassword"
+                android:nextFocusLeft="@id/btnCancel" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

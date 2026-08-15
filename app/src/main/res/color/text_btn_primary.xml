@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动/停止/保存等主按钮文字：未选中白，选中白（加粗由代码处理），禁用半透明白 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#66FFFFFF" />
+    <item android:color="@android:color/white" />
+</selector>

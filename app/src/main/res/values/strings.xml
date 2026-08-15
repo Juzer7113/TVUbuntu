@@ -1,25 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ubuntu 控制器</string>
-    <string name="subtitle">H618 TV Box · Ubuntu 24.04 ARM64</string>
+    <string name="subtitle">准备就绪</string>
 
     <string name="service_status">服务状态</string>
     <string name="status_checking">检测中…</string>
     <string name="status_starting">正在启动 Ubuntu…</string>
+    <string name="status_installing">正在安装并启动 Ubuntu…</string>
     <string name="status_stopping">正在停止 Ubuntu…</string>
 
     <string name="btn_start">启动 Ubuntu</string>
+    <string name="btn_start_short">启动</string>
     <string name="btn_stop">停止 Ubuntu</string>
+    <string name="btn_stop_short">停止</string>
     <string name="btn_settings">配置</string>
+    <string name="btn_settings_short">配置</string>
     <string name="btn_save">保存</string>
     <string name="btn_cancel">取消</string>
+    <string name="btn_copy_log">复制日志</string>
+    <string name="btn_copy_log_short">日志</string>
+    <string name="log_copied">日志已复制到剪贴板</string>
+    <string name="log_empty">日志为空</string>
 
-    <string name="ssh_connection_info">SSH 连接信息</string>
     <string name="ssh_service">SSH 服务</string>
     <string name="ssh_host">主机地址</string>
-    <string name="ssh_port">端口</string>
     <string name="ssh_user">用户名</string>
-    <string name="ssh_command_label">连接命令:</string>
+    <string name="ssh_password">密码</string>
     <string name="ssh_running">运行中</string>
     <string name="ssh_not_ready">启动中…</string>
     <string name="ssh_not_running">未运行</string>
@@ -32,6 +38,10 @@
     <string name="settings_title">配置</string>
     <string name="setting_start_script">Ubuntu 启动脚本路径</string>
     <string name="setting_stop_script">Ubuntu 停止脚本路径</string>
+    <string name="setting_ubuntu_version">Ubuntu 版本</string>
+    <string name="setting_arch">CPU 架构</string>
     <string name="setting_ssh_port">SSH 端口</string>
     <string name="setting_ssh_user">SSH 用户名</string>
+    <string name="setting_ssh_password">SSH 密码</string>
+    <string name="setting_auto_start">开机自动启动 Ubuntu</string>
 </resources>

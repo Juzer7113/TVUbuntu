@@ -26,12 +26,24 @@ __pycache__/
 /.idea/
 .DS_Store
 /build/
+/app/build/
 /captures
 .externalNativeBuild
 .cxx
 *.apk
 *.ap_
 *.dex
+
+# Signing keys / keystores (never commit private keys)
+juzer
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# IDE / tooling
+.coze
+*.iml
 *.class
 gen-external-apklibs
 out

@@ -26,4 +26,17 @@
     <color name="ssh_command">#53D769</color>
 
     <color name="command_box_bg">#0D1B2A</color>
+
+    <!-- TV 焦点（光标）指示：焦点态反色（亮底深字）+ 高亮边框 -->
+    <color name="focus_border">#FFFFFF</color>
+    <color name="focus_bg">#FFFFFF</color>
+    <color name="focus_text">#1A1A2E</color>
+    <color name="focus_bg_soft">#26FFFFFF</color>
+    <color name="accent_green_bright">#2AE3B5</color>
+    <color name="btn_disabled_bg">#33445555</color>
+
+    <!-- 按钮统一风格：未选中深色半透明，选中提亮+白边框（焦点高亮） -->
+    <color name="btn_bg_normal">#22FFFFFF</color>
+    <color name="btn_bg_focused">#3AFFFFFF</color>
+    <color name="btn_bg_pressed">#44FFFFFF</color>
 </resources>

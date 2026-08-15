@@ -12,7 +12,7 @@
         android:orientation="vertical"
         android:padding="32dp">
 
-        <!-- Header -->
+        <!-- Header：左侧图标/标题/版本，右侧按钮群 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -20,34 +20,14 @@
             android:orientation="horizontal"
             android:layout_marginBottom="24dp">
 
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@drawable/ic_ubuntu"
-                android:contentDescription="@string/app_name" />
-
-            <LinearLayout
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/app_name"
-                    android:textColor="@color/text_primary"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/subtitle"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-            </LinearLayout>
+                android:text="@string/app_name"
+                android:textColor="@color/text_primary"
+                android:textSize="28sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvRootStatus"
@@ -59,6 +39,65 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp"
                 android:text="@string/checking_root" />
+
+            <!-- 右上角操作按钮群：启动 / 停止 / 复制日志 / 配置，大小一致 -->
+            <Button
+                android:id="@+id/btnStart"
+                android:layout_width="80dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/btn_start"
+                android:text="@string/btn_start_short"
+                android:textColor="@color/text_btn_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnSettings"
+                android:nextFocusRight="@id/btnStop" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="80dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_stop"
+                android:text="@string/btn_stop_short"
+                android:textColor="@color/text_btn_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnStart"
+                android:nextFocusRight="@id/btnCopyLog" />
+
+            <Button
+                android:id="@+id/btnCopyLog"
+                android:layout_width="80dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_secondary"
+                android:text="@string/btn_copy_log_short"
+                android:textColor="@color/text_btn_secondary"
+                android:textSize="13sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnStop"
+                android:nextFocusRight="@id/btnSettings" />
+
+            <Button
+                android:id="@+id/btnSettings"
+                android:layout_width="80dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_secondary"
+                android:text="@string/btn_settings_short"
+                android:textColor="@color/text_btn_secondary"
+                android:textSize="13sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnCopyLog"
+                android:nextFocusRight="@id/btnStart" />
         </LinearLayout>
 
         <!-- Status Card -->
@@ -109,67 +148,36 @@
                 android:layout_marginStart="26dp"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
+
+            <ProgressBar
+                android:id="@+id/pbInstall"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:max="100"
+                android:progress="0"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginStart="26dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:visibility="gone" />
         </LinearLayout>
 
-        <!-- Control Buttons -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="20dp">
-
-            <Button
-                android:id="@+id/btnStart"
-                android:layout_width="0dp"
-                android:layout_height="80dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/btn_start"
-                android:text="@string/btn_start"
-                android:textColor="@android:color/white"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                app:icon="@drawable/ic_play"
-                app:iconGravity="textStart"
-                app:iconTint="@android:color/white" />
-
-            <Button
-                android:id="@+id/btnStop"
-                android:layout_width="0dp"
-                android:layout_height="80dp"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/btn_stop"
-                android:text="@string/btn_stop"
-                android:textColor="@android:color/white"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                app:icon="@drawable/ic_stop"
-                app:iconGravity="textStart"
-                app:iconTint="@android:color/white" />
-        </LinearLayout>
-
-        <!-- SSH Info Card -->
+        <!-- SSH Info Card：只保留主机、用户名、密码 -->
         <LinearLayout
             android:id="@+id/sshInfoCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="24dp"
-            android:layout_marginBottom="20dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/ssh_connection_info"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp"
-                android:layout_marginBottom="16dp" />
+            android:padding="24dp">
 
             <!-- SSH Status -->
             <LinearLayout
@@ -221,31 +229,6 @@
                     android:textIsSelectable="true" />
             </LinearLayout>
 
-            <!-- Port -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:layout_marginBottom="12dp">
-
-                <TextView
-                    android:layout_width="120dp"
-                    android:layout_height="wrap_content"
-                    android:text="@string/ssh_port"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:id="@+id/tvSSHPort"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp"
-                    android:textIsSelectable="true" />
-            </LinearLayout>
-
             <!-- User -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -271,51 +254,31 @@
                     android:textIsSelectable="true" />
             </LinearLayout>
 
-            <!-- Connect Command -->
+            <!-- Password -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/bg_command_box"
-                android:padding="12dp">
+                android:orientation="horizontal">
 
                 <TextView
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ssh_password"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tvSSHPassword"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/ssh_command_label"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/tvSSHCommand"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
                     android:text="--"
-                    android:textColor="@color/ssh_command"
-                    android:textSize="14sp"
-                    android:fontFamily="monospace"
-                    android:textIsSelectable="true" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textIsSelectable="true"
+                    android:fontFamily="monospace" />
             </LinearLayout>
         </LinearLayout>
-
-        <!-- Settings Button -->
-        <Button
-            android:id="@+id/btnSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:layout_gravity="end"
-            android:background="@drawable/btn_secondary"
-            android:text="@string/btn_settings"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:focusable="true"
-            app:icon="@drawable/ic_settings"
-            app:iconGravity="textStart"
-            app:iconTint="@color/text_secondary" />
 
     </LinearLayout>
 </ScrollView>

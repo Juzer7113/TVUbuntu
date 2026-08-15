@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RadioButton 圆点：选中亮绿，聚焦白（高亮），未选中灰 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="@color/accent_green_bright" />
+    <item android:state_focused="true" android:color="@android:color/white" />
+    <item android:color="@color/text_secondary" />
+</selector>
