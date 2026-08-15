@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -74,7 +74,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.1
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.2
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器
@@ -112,7 +112,7 @@ start.sh（以 root 运行）
    ├─ chroot 冒烟测试（确认 /bin/bash 真的能跑起来）
    ├─ chroot 内 → apt 安装 openssh-server（+ curl/git/nano/sudo …）
    ├─ 仅首次初始化 root 密码，开启 PermitRootLogin + PasswordAuthentication
-   └─ chroot 内 → /usr/sbin/sshd -D -p <端口>   （+ 可选 /etc/rc.local、supervisord）
+   └─ chroot 内 → /usr/sbin/sshd -D -p <端口>   （+ 三层自启动：/etc/rc.local → supervisord → /etc/init.d/*）
    ▼
 MainActivity 展示：  SSH 主机（设备 IP）· 用户 · 密码 · 端口
    ▼
@@ -124,6 +124,8 @@ MainActivity 展示：  SSH 主机（设备 IP）· 用户 · 密码 · 端口
 - **不会被骗的架构识别（1.2.1 修复）。** MuMu 等模拟器会把 `uname -m` 伪装成 `aarch64`，但真实内核是 `x86_64`；
   TVUbuntu **仅当**真实架构是 x86_64 而 `uname` 被伪装时，才纠正为 `amd64`。真 arm64 / armhf / x86 设备保留真实架构，
   因此 chroot 内的 Python/pip 能读到正确平台。设置里仍可手动覆盖。
+- **三层服务自启动（1.2.2 新增）。** 每次开机 `run_ubuntu.sh` 依次拉起服务：(1) 你自定义的 `/etc/rc.local`，(2) 若装了 `supervisord` 则用它接管，(3) 通用 `/etc/init.d/*` 遍历——自动发现并启动任何带 init 脚本的服务。
+  也就是说，你之后装的 nginx / MySQL / Redis / 宝塔 等，重启后会自动起来，无需改动任何脚本。危险的关机/挂载类脚本会被自动跳过，保证安全。
 - **`toybox tar` 符号链接修复。** 很多盒子的 `tar` 会丢掉符号链接 / 硬链接 / setuid 位。
   我们从 tar 包清单里重建它们，确保 `/bin/bash` 和 `/lib/ld-linux` 能正确解析。
 - **应用端解 gzip。** 盒子的 `tar` 常不支持 `-z`；应用用 Java 先把 gzip 解成纯 `.tar`，再交给 `tar -xf`。
@@ -228,6 +230,10 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.2.2
+- **三层服务自启动。** `run_ubuntu.sh` 现在每次开机按序执行：`/etc/rc.local`（你自定义的命令，保留以兼容旧用法）→ 若已安装则启动 `supervisord` → 通用 `/etc/init.d/*` 遍历，自动发现并启动任何带 init 脚本的服务。
+  新装的服务重启后自动开机启动，零配置；危险的系统脚本（halt/reboot/mount/…）会自动跳过，确保安全。
 
 ### v1.2.1
 - **修复真实环境架构识别。** `rootfsArch()` 现在以 `uname -m` 为基准，仅当真实架构是 x86_64 但 `uname` 被伪装（如 MuMu 模拟器把自己伪装成 `aarch64`）时才纠正为 `amd64`。

@@ -10,7 +10,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -75,7 +75,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.1
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.2
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver
@@ -113,7 +113,7 @@ start.sh  (run as root)
    ├─ chroot smoke-test (/bin/bash really runs)
    ├─ chroot → apt install openssh-server (+ curl/git/nano/sudo …)
    ├─ init root password once, enable PermitRootLogin + PasswordAuthentication
-   └─ chroot → /usr/sbin/sshd -D -p <port>   (+ optional /etc/rc.local, supervisord)
+   └─ chroot → /usr/sbin/sshd -D -p <port>   (+ three-layer boot: /etc/rc.local → supervisord → /etc/init.d/*)
    ▼
 MainActivity shows:  SSH host (device IP) · user · password · port
    ▼
@@ -123,6 +123,7 @@ You:  ssh root@<device-ip>   → a real Ubuntu shell 🎉
 **Engineering highlights (the tricky bits we solved):**
 
 - **Architecture detection that isn't fooled (fixed in 1.2.1).** Emulators like MuMu fake `uname -m` as `aarch64` while the real kernel is `x86_64`; TVUbuntu corrects to `amd64` **only** when the true arch is x86_64 yet `uname` lies. Genuine arm64 / armhf / x86 boxes keep their true arch, so Python/pip inside the chroot resolve the correct platform. Manual override remains available.
+- **Three-layer service auto-start (new in 1.2.2).** On every boot `run_ubuntu.sh` launches services in order: (1) your custom `/etc/rc.local`, (2) `supervisord` if installed, (3) a generic `/etc/init.d/*` sweep that auto-discovers and starts any service with an init script — so anything you install (nginx, MySQL, Redis, Baota…) comes up on reboot without editing anything. Dangerous shutdown/mount scripts are skipped for safety.
 - **`toybox tar` symlink repair.** Many boxes ship a `tar` that drops symlinks/hardlinks/setuid bits. We rebuild them from the tarball listing so `/bin/bash` and `/lib/ld-linux` resolve correctly.
 - **App-side gzip decode.** The box `tar` often can't handle `-z`; the App decodes gzip in Java and passes a plain `.tar` to `tar -xf`.
 - **Live progress over a pipe.** `start.sh` emits `UC_PROGRESS|<pct>|<msg>` lines that the App renders as a real progress bar.
@@ -226,6 +227,9 @@ mysql -u root                   # MariaDB (unix_socket auth)
 ---
 
 ## 📝 Changelog
+
+### v1.2.2
+- **Three-layer service auto-start.** `run_ubuntu.sh` now runs services in order on every boot: `/etc/rc.local` (your custom commands, kept for backward compatibility) → `supervisord` (if installed) → a generic `/etc/init.d/*` sweep that auto-discovers and starts any service exposing an init script. New services boot automatically on reboot with zero config changes; dangerous system scripts (halt/reboot/mount/…) are skipped for safety.
 
 ### v1.2.1
 - **Fixed real-environment architecture detection.** `rootfsArch()` now treats `uname -m` as the baseline and overrides to `amd64` **only** when the true arch is x86_64 but `uname` was spoofed (e.g. MuMu emulator masking itself as `aarch64`). Genuine arm64 / armhf / x86 devices keep their true architecture, so Python/pip inside the chroot read the correct value.

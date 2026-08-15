@@ -752,17 +752,33 @@ echo "[inner] sshd 配置自检 (sshd -t):"
 /usr/sbin/sshd -t 2>&1 | tail -15
 
 # ===== 生产化：服务自启动 =====
-# chroot 里没有 systemd，用以下两层机制管理服务（架构无关，所有 Ubuntu 版本通用）：
-# 1) /etc/rc.local —— 用户自定义启动脚本，后台执行（可放 Nginx/MySQL/Redis 等启动命令）
+# chroot 里没有 systemd，用以下三层机制管理服务（架构无关，所有 Ubuntu 版本通用）：
+# 1) /etc/rc.local —— 用户自定义启动脚本，后台执行（可放额外启动命令）
 if [ -x /etc/rc.local ]; then
   echo "[inner] 执行 /etc/rc.local ..."
   nohup /etc/rc.local >> /hostlog 2>&1 &
 fi
-# 2) supervisord —— 若已安装，用 supervisor 统一管理服务（推荐生产环境使用）
+# 2) supervisord —— 若已安装，用 supervisor 统一管理服务
 if [ -x /usr/bin/supervisord ]; then
   echo "[inner] 启动 supervisord ..."
   /usr/bin/supervisord -c /etc/supervisor/supervisord.conf 2>&1
 fi
+# 3) 通用服务自启动 —— 自动遍历 /etc/init.d/ 下所有服务脚本逐个 start，
+#    拉起宝塔/nginx/php/mysql/redis/自定义服务；跳过「关机/挂载/杀进程」等危险系统脚本。
+#    以后装任何带 init.d 脚本的服务都会自动开机启动，无需改脚本。
+DANGEROUS_INIT="halt reboot poweroff shutdown killall single sendsigs killprocs umountfs umountroot umountnfs umountiscsi checkroot checkfs mountall mountnfs mountkernfs mountdevsubfs bootlogd bootlogs bootmisc skeleton rc rcS rc.local hwclock procps udev eudev mtab networking network-manager dbus ssh sshd supervisor supervisord"
+echo "[inner] 通用服务自启动（遍历 /etc/init.d）..."
+for init in /etc/init.d/*; do
+  [ -x "$init" ] || continue
+  name="$(basename "$init")"
+  case " $DANGEROUS_INIT " in
+    *" $name "*) continue ;;
+  esac
+  case "$name" in
+    *.sh) continue ;;
+  esac
+  "$init" start >> /hostlog 2>&1 || true
+done
 
 echo "[inner] 启动 sshd 端口 $PORT ..."
 /usr/sbin/sshd -D -p "$PORT" -o PermitRootLogin=yes -o PasswordAuthentication=yes -o UsePAM=no -o ListenAddress=0.0.0.0 2>&1
