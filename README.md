@@ -56,6 +56,22 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshots/main-ui.png" alt="TVUbuntu main UI: Ubuntu started, SSH info displayed" width="700"/>
+  <br/>
+  <sub>Main UI — Ubuntu is running and SSH connection details are shown right on the TV.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/settings-ui.png" alt="TVUbuntu settings UI: Ubuntu version and architecture selection" width="700"/>
+  <br/>
+  <sub>Settings — choose Ubuntu version, CPU architecture, and enable boot auto-start.</sub>
+</p>
+
+---
+
 ## 🧱 Tech Stack
 
 | Layer | Choice |

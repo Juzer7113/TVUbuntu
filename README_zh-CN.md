@@ -55,6 +55,22 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 
 ---
 
+## 📸 截图
+
+<p align="center">
+  <img src="screenshots/main-ui.png" alt="TVUbuntu 主界面：Ubuntu 已启动并显示 SSH 连接信息" width="700"/>
+  <br/>
+  <sub>主界面 — Ubuntu 正在运行，大屏直接显示 SSH 主机 / 用户 / 密码 / 端口。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/settings-ui.png" alt="TVUbuntu 设置界面：选择 Ubuntu 版本与 CPU 架构" width="700"/>
+  <br/>
+  <sub>设置界面 — 选择 Ubuntu 版本、CPU 架构，并开启开机自启动。</sub>
+</p>
+
+---
+
 ## 🧱 技术栈
 
 | 层 | 选型 |
