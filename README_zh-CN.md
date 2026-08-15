@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.1.0-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -74,7 +74,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.1.0
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.1
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器
@@ -121,8 +121,9 @@ MainActivity 展示：  SSH 主机（设备 IP）· 用户 · 密码 · 端口
 
 **工程亮点（我们踩过的坑）：**
 
-- **不会被骗的架构识别。** MuMu 等模拟器会把 `uname -m` 伪装成 `aarch64`，但真实内核是 `x86_64`。
-  TVUbuntu 优先信任 `getprop ro.product.cpu.abilist`，并允许你在设置里手动覆盖。
+- **不会被骗的架构识别（1.2.1 修复）。** MuMu 等模拟器会把 `uname -m` 伪装成 `aarch64`，但真实内核是 `x86_64`；
+  TVUbuntu **仅当**真实架构是 x86_64 而 `uname` 被伪装时，才纠正为 `amd64`。真 arm64 / armhf / x86 设备保留真实架构，
+  因此 chroot 内的 Python/pip 能读到正确平台。设置里仍可手动覆盖。
 - **`toybox tar` 符号链接修复。** 很多盒子的 `tar` 会丢掉符号链接 / 硬链接 / setuid 位。
   我们从 tar 包清单里重建它们，确保 `/bin/bash` 和 `/lib/ld-linux` 能正确解析。
 - **应用端解 gzip。** 盒子的 `tar` 常不支持 `-z`；应用用 Java 先把 gzip 解成纯 `.tar`，再交给 `tar -xf`。
@@ -223,6 +224,14 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 | 启动后 SSH 未就绪 | 点 **复制日志**，查看 `/data/local/ubuntu/ubuntu.log`。 |
 | `chroot` 冒烟测试失败 | 多为 SELinux 问题；脚本已尝试 `setenforce 0` + `chcon`，详见日志。 |
 | 模拟器架构识别错 | 在设置里把 **CPU 架构** 设为 `amd64`。 |
+
+---
+
+## 📝 更新日志
+
+### v1.2.1
+- **修复真实环境架构识别。** `rootfsArch()` 现在以 `uname -m` 为基准，仅当真实架构是 x86_64 但 `uname` 被伪装（如 MuMu 模拟器把自己伪装成 `aarch64`）时才纠正为 `amd64`。
+  真实的 arm64 / armhf / x86 设备保留其真实架构，chroot 内的 Python/pip 能读到正确值。
 
 ---
 

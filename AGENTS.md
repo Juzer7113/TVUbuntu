@@ -47,7 +47,10 @@ app/src/main/
 - 目标设备：各类 ARM64 机顶盒/安卓设备（含 2GB 内存等低配机型）、Android TV；同时兼容 x86_64 模拟器。已对多种机顶盒与安卓设备验证，兼容性良好
 - 需要 Root 权限执行 shell 命令控制 Ubuntu chroot
 - UI 必须适配 TV 遥控器（D-Pad 导航、大按钮、高对比度）
-- 多架构/多版本支持（UbuntuService.rootfsArch() 按 uname -m 判定）：
+- 多架构/多版本支持（UbuntuService.rootfsArch()，1.2.1 起按「关键判断」修正）：
+  - 以 uname -m 为基准，**仅当真实架构是 x86_64 且 uname 不是 x86_64 时才纠正成 x86_64**
+  - MuMu 等 x86 模拟器伪装成 aarch64 → 触发纠正，rootfs 用 amd64 ✅
+  - 真实 arm64 盒子（uname=aarch64）/ armhf 老设备（uname=armv7l）/ 真实 x86（uname=x86_64）→ 不触发，保留真值 ✅
   - arm64 真机：ubuntu-base arm64 rootfs → `rootfs.<version>.arm64`
   - x86_64 模拟器：ubuntu-base amd64 rootfs → `rootfs.<version>.amd64`
   - Ubuntu 版本可选 22.04 (jammy) / 24.04 (noble) / 26.04 (resolute)，rootfs 目录按「版本.架构」隔离

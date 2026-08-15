@@ -70,10 +70,17 @@ object UbuntuService {
     const val ARCH_ARMHF = "armhf"
 
     /**
-     * 目标 rootfs 架构。
-     * 关键：不能只信 uname -m —— MuMu 等模拟器会把 uname -m 伪装成 aarch64，
-     * 但真实内核是 x86_64（ARM 代码靠翻译层执行）。优先用 getprop 综合判断，
-     * 只要任一属性含 x86_64 就按 amd64 处理；用户也可在设置里手动覆盖。
+     * 目标 rootfs 架构（1.2.1 修正）。
+     * 关键判断：以 uname -m 为「设备自报架构」基准，
+     * 仅当【真实架构是 x86_64 且 uname 不是 x86_64】时才纠正成 x86_64。
+     *
+     *   - MuMu 等 x86 模拟器把 uname -m 伪装成 aarch64，但 getprop 暴露真 x86
+     *     → 触发纠正，rootfs 用 amd64，Python/pip 从此读真值 ✅
+     *   - 真实 arm64 盒子 → uname 本就是 aarch64，不触发，Python 正确识别 arm64 ✅
+     *   - 真实 armhf 老设备 → uname 本就是 armv7l，不触发，Python 正确识别 armhf ✅
+     *   - 真实 x86 盒子/电脑 → uname 本就是 x86_64，不触发 ✅
+     *
+     * 用户仍可在设置里手动覆盖。
      */
     fun rootfsArch(context: Context? = null): String {
         if (context != null) {
@@ -83,14 +90,17 @@ object UbuntuService {
         val props = ShellExecutor.execute(
             "getprop ro.product.cpu.abilist; getprop ro.product.cpu.abi"
         ).output
-        if (props.contains("x86_64")) return ARCH_AMD64
-        // 32 位 ARM：abi 为 armeabi-v7a 且无 arm64-v8a
-        if (props.contains("armeabi-v7a") && !props.contains("arm64-v8a")) return ARCH_ARMHF
-        val r = ShellExecutor.execute("uname -m").output
+        // getprop 暴露的「真实是否支持 x86_64」（模拟器翻译层会暴露，真 ARM 不会）
+        val realX86 = props.contains("x86_64")
+        val r = ShellExecutor.execute("uname -m").output.trim()
         return when {
+            // 仅当真实架构是 x86_64 且 uname 被伪装成非 x86 时，才纠正为 amd64
+            realX86 && !r.contains("x86_64") -> ARCH_AMD64
             r.contains("x86_64") -> ARCH_AMD64
             r.contains("aarch64") -> ARCH_ARM64
             r.contains("armv7") || r.contains("armv8") -> ARCH_ARMHF
+            // 兜底：abi 判断（32 位 ARM）
+            props.contains("armeabi-v7a") && !props.contains("arm64-v8a") -> ARCH_ARMHF
             else -> ARCH_ARM64
         }
     }

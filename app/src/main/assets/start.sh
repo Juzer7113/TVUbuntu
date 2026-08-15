@@ -594,6 +594,48 @@ if ! apt-get install -y --no-install-recommends openssh-server \
   exit 1
 fi
 
+# ===== 修复 uname 架构伪装（MuMu 等 x86 模拟器把 uname -m 伪装成 aarch64）=====
+# 根因：模拟器内核是 x86_64，但为兼容 ARM 应用把 uname 伪装成 aarch64，
+# 导致 Python platform.machine() 返回 aarch64，pip 下载 aarch64 wheel，宝塔 C 扩展加载失败。
+# 方案：编译一个 LD_PRELOAD 库 hook uname()，把 machine 字段强制返回真实 x86_64。
+if [ "$MARCH" = "x86_64" ] && [ "$(uname -m)" != "x86_64" ]; then
+  say "检测到 uname 架构伪装（$(uname -m) != x86_64），安装 fakeuname 修复"
+  apt-get install -y --no-install-recommends gcc libc6-dev $APT_OPTS >> "$HOSTLOG" 2>&1
+  cat > /tmp/fakeuname.c <<'CEOF'
+#define _GNU_SOURCE
+#include <sys/utsname.h>
+#include <string.h>
+#include <dlfcn.h>
+static int (*real_uname)(struct utsname *) = 0;
+int uname(struct utsname *buf) {
+    if (!real_uname) real_uname = (int (*)(struct utsname *))dlsym(RTLD_NEXT, "uname");
+    int ret = real_uname ? real_uname(buf) : -1;
+    if (ret == 0 && buf) {
+        strncpy(buf->machine, "x86_64", sizeof(buf->machine) - 1);
+        buf->machine[sizeof(buf->machine) - 1] = '\0';
+    }
+    return ret;
+}
+CEOF
+  gcc -shared -fPIC -O2 -o /usr/local/lib/fakeuname.so /tmp/fakeuname.c >> "$HOSTLOG" 2>&1
+  rm -f /tmp/fakeuname.c
+  if [ -f /usr/local/lib/fakeuname.so ]; then
+    # 先单进程冒烟测试，确认无误再全局生效，避免 .so 有问题导致系统起不来
+    smoke="$(LD_PRELOAD=/usr/local/lib/fakeuname.so uname -m 2>/dev/null)"
+    if [ "$smoke" = "x86_64" ]; then
+      echo "/usr/local/lib/fakeuname.so" > /etc/ld.so.preload
+      say "fakeuname 修复完成：uname -m 现返回 $(uname -m)"
+    else
+      say "fakeuname 冒烟测试未通过（got: $smoke），不全局生效"
+      rm -f /usr/local/lib/fakeuname.so
+    fi
+  else
+    say "fakeuname 编译失败，跳过（不影响 SSH，仅 Python/pip 架构识别受影响）"
+  fi
+else
+  say "uname 架构正常（$(uname -m)），无需 fakeuname"
+fi
+
 mkdir -p /run/sshd
 ssh-keygen -A >> "$HOSTLOG" 2>&1
 sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config

@@ -10,7 +10,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.1.0-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -75,7 +75,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.1.0
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.1
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver
@@ -122,7 +122,7 @@ You:  ssh root@<device-ip>   → a real Ubuntu shell 🎉
 
 **Engineering highlights (the tricky bits we solved):**
 
-- **Architecture detection that isn't fooled.** Emulators like MuMu fake `uname -m` as `aarch64` while the real kernel is `x86_64`. TVUbuntu trusts `getprop ro.product.cpu.abilist` first, and lets you override manually.
+- **Architecture detection that isn't fooled (fixed in 1.2.1).** Emulators like MuMu fake `uname -m` as `aarch64` while the real kernel is `x86_64`; TVUbuntu corrects to `amd64` **only** when the true arch is x86_64 yet `uname` lies. Genuine arm64 / armhf / x86 boxes keep their true arch, so Python/pip inside the chroot resolve the correct platform. Manual override remains available.
 - **`toybox tar` symlink repair.** Many boxes ship a `tar` that drops symlinks/hardlinks/setuid bits. We rebuild them from the tarball listing so `/bin/bash` and `/lib/ld-linux` resolve correctly.
 - **App-side gzip decode.** The box `tar` often can't handle `-z`; the App decodes gzip in Java and passes a plain `.tar` to `tar -xf`.
 - **Live progress over a pipe.** `start.sh` emits `UC_PROGRESS|<pct>|<msg>` lines that the App renders as a real progress bar.
@@ -222,6 +222,13 @@ mysql -u root                   # MariaDB (unix_socket auth)
 | SSH not ready after start | Tap **复制日志** (Copy Log) and inspect `/data/local/ubuntu/ubuntu.log`. |
 | `chroot` smoke-test fails | Usually SELinux; the script already tries `setenforce 0` + `chcon`. Check the log. |
 | Emulator shows wrong arch | Set **CPU 架构 = amd64** in Settings. |
+
+---
+
+## 📝 Changelog
+
+### v1.2.1
+- **Fixed real-environment architecture detection.** `rootfsArch()` now treats `uname -m` as the baseline and overrides to `amd64` **only** when the true arch is x86_64 but `uname` was spoofed (e.g. MuMu emulator masking itself as `aarch64`). Genuine arm64 / armhf / x86 devices keep their true architecture, so Python/pip inside the chroot read the correct value.
 
 ---
 
