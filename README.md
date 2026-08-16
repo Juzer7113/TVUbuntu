@@ -1,7 +1,10 @@
 # 📺🐧 TVUbuntu — Run a Real Ubuntu on Your Android TV Box
 
-> [!NOTE]
-> 🇨🇳 **中文用户看这里 / For Chinese readers**：完整中文文档 → [README_zh-CN.md](README_zh-CN.md)
+<p align="center">
+  <a href="README_zh-CN.md"><img src="https://img.shields.io/badge/%F0%9F%93%98%20%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-%E7%82%B9%E5%87%BB%E6%9F%A5%E7%9C%8B-E91E63" alt="中文文档"/></a>
+  &nbsp;&nbsp;
+  <a href="README.md"><img src="https://img.shields.io/badge/%F0%9F%93%97%20English-Read%20here-1A1A2E" alt="English"/></a>
+</p>
 
 > Turn any Android TV box or Android device into a tiny, always-on **Ubuntu server**.
 > A Kotlin Android **TV** app boots a genuine Ubuntu (22.04 / 24.04 / 26.04) via a native **chroot**, auto-installs **OpenSSH**, and shows the SSH connection info right on your living-room screen.
