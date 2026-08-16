@@ -109,6 +109,49 @@ sleep 1
 sleep 3
 supervisorctl -c /etc/supervisor/supervisord.conf status
 
+# ---------- 7. nginx 默认静态站点 ----------
+log "配置 nginx 默认站点..."
+mkdir -p /var/www/html
+cat > /var/www/html/index.html <<'EOF'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>TVUbuntu</title>
+  <style>
+    body { font-family: sans-serif; background: #1A1A2E; color: #E8E8E8; text-align: center; padding-top: 10vh; }
+    h1 { color: #00C897; }
+    p { color: #8899AA; }
+  </style>
+</head>
+<body>
+  <h1>TVUbuntu Web Stack is running</h1>
+  <p>nginx · PHP-FPM · MariaDB · Redis</p>
+</body>
+</html>
+EOF
+
+cat > /etc/nginx/sites-available/default <<'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    root /var/www/html;
+    index index.html;
+    server_name _;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+EOF
+
+if [ -d /etc/nginx/sites-enabled ]; then
+    rm -f /etc/nginx/sites-enabled/default
+    ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+fi
+
+nginx -s reload 2>/dev/null || true
+
 log "==================== 完成 ===================="
 log "服务端口：nginx=80  mariadb=3306  redis=6379  ssh=22"
 log "常用命令："

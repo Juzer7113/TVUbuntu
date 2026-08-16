@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 终端框背景：选中（聚焦）时细白边框作为选中提示，未选中深色底 + 极细边框，四边等宽 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/command_box_bg" />
+            <corners android:radius="8dp" />
+            <stroke android:width="2dp" android:color="@color/focus_border" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/command_box_bg" />
+            <corners android:radius="8dp" />
+            <stroke android:width="1dp" android:color="#33FFFFFF" />
+        </shape>
+    </item>
+</selector>

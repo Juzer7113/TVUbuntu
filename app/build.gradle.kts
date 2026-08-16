@@ -11,8 +11,8 @@ android {
         applicationId = "com.ubuntucontroller"
         minSdk = 21
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.2.2"
+        versionCode = 5
+        versionName = "1.2.3"
     }
 
     buildTypes {
@@ -49,4 +49,14 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+}
+
+// 兼容部分 IDE/脚本习惯调用的 :app:unitTestClasses task
+if ("unitTestClasses" !in tasks.names) {
+    tasks.register("unitTestClasses") {
+        group = "verification"
+        description = "编译 debug 单元测试源码（兼容别名）。"
+        dependsOn("compileDebugUnitTestSources")
+    }
 }

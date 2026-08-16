@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -26,6 +27,7 @@ class MainActivity : AppCompatActivity() {
 
         setupButtons()
         setupTvFocus()
+        setupTerminal()
         checkRootAndStatus()
     }
 
@@ -40,6 +42,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 终端聚焦时，返回键退出输入框
+        if (binding.etTerminal.isFocused && keyCode == KeyEvent.KEYCODE_BACK) {
+            exitCommandInput()
+            return true
+        }
         // 方向键：手动驱动焦点导航（低性能机顶盒框架默认焦点搜索可能失效的兜底）
         if (handleTvDpad(binding.root, keyCode)) return true
         // 焦点意外丢失时，方向键把焦点拉回可用按钮
@@ -84,6 +91,183 @@ class MainActivity : AppCompatActivity() {
             cm.setPrimaryClip(ClipData.newPlainText("ubuntu_log", log))
             Toast.makeText(this@MainActivity, getString(R.string.log_copied), Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // ===== 终端式命令控制台：输入与输出同一个框 =====
+    private lateinit var prompt: String
+    private var terminalActive = false
+    private val commandHistory = mutableListOf<String>()
+    private var historyIndex = -1
+
+    private fun setupTerminal() {
+        prompt = "${UbuntuService.getSshUser(this)}@ubuntu:~$ "
+        binding.etTerminal.setText(prompt)
+        binding.etTerminal.setSelection(binding.etTerminal.text.length)
+        // 终端始终可聚焦：未启动时按 OK 会提示先启动服务，不进入输入
+        binding.etTerminal.setCursorVisible(false) // 未进入前光标不闪
+
+        // 离开终端时重置「已进入输入」状态并隐藏光标
+        binding.etTerminal.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                terminalActive = false
+                binding.etTerminal.setCursorVisible(false)
+            }
+        }
+
+        // 终端按键状态机：未进入=OK 才进入；已进入=OK/回车执行、上下翻历史
+        binding.etTerminal.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            if (keyCode == KeyEvent.KEYCODE_BACK) return@setOnKeyListener false // 交给 onKeyDown
+            if (terminalActive) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_NUMPAD_ENTER,
+                    KeyEvent.KEYCODE_DPAD_CENTER -> {
+                        if (event.repeatCount == 0) runCommand()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> { if (event.repeatCount == 0) recallHistory(-1); true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> { if (event.repeatCount == 0) recallHistory(1); true }
+                    else -> false
+                }
+            } else {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER,
+                    KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        if (event.repeatCount == 0) activateTerminal()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP,
+                    KeyEvent.KEYCODE_DPAD_DOWN,
+                    KeyEvent.KEYCODE_DPAD_LEFT,
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        moveFocusToButtons()
+                        true
+                    }
+                    else -> true // 未进入时吞掉其它输入
+                }
+            }
+        }
+    }
+
+    private fun activateTerminal() {
+        lifecycleScope.launch {
+            val running = withContext(Dispatchers.IO) {
+                UbuntuService.isRunning(this@MainActivity)
+            }
+            if (!running) {
+                Toast.makeText(this@MainActivity, getString(R.string.command_not_running), Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            terminalActive = true
+            binding.etTerminal.setCursorVisible(true) // 进入后光标闪
+            binding.etTerminal.setSelection(binding.etTerminal.text.length)
+        }
+    }
+
+    // 未进入输入状态时，任意方向键都回到顶部按钮（终端在底部，无其它焦点目标）
+    private fun moveFocusToButtons(): Boolean {
+        val target = when {
+            binding.btnCopyLog.isFocusable -> binding.btnCopyLog
+            binding.btnSettings.isFocusable -> binding.btnSettings
+            binding.btnStop.isFocusable -> binding.btnStop
+            else -> binding.btnStart
+        }
+        target.requestFocus()
+        return true
+    }
+
+    // 执行当前输入行命令，输出追加到同一个终端框
+    private fun runCommand() {
+        val full = binding.etTerminal.text.toString()
+        val idx = full.lastIndexOf(prompt)
+        if (idx < 0) {
+            binding.etTerminal.append(prompt)
+            binding.etTerminal.setSelection(binding.etTerminal.text.length)
+            return
+        }
+        val cmd = full.substring(idx + prompt.length).trim()
+        // 空命令：像正常 SSH 一样直接换行，回到新提示符
+        if (cmd.isEmpty()) {
+            binding.etTerminal.append("\n")
+            binding.etTerminal.append(prompt)
+            binding.etTerminal.setSelection(binding.etTerminal.text.length)
+            return
+        }
+        if (commandHistory.isEmpty() || commandHistory.last() != cmd) {
+            commandHistory.add(cmd)
+        }
+        historyIndex = -1
+        binding.etTerminal.append("\n")
+        lifecycleScope.launch {
+            val running = withContext(Dispatchers.IO) {
+                UbuntuService.isRunning(this@MainActivity)
+            }
+            if (!running) {
+                binding.etTerminal.append(getString(R.string.command_not_running))
+                binding.etTerminal.append("\n")
+                binding.etTerminal.append(prompt)
+                binding.etTerminal.setSelection(binding.etTerminal.text.length)
+                Toast.makeText(this@MainActivity, getString(R.string.command_not_running), Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val result = withContext(Dispatchers.IO) {
+                UbuntuService.runInUbuntu(this@MainActivity, cmd, timeoutMs = 120_000)
+            }
+            val out = buildString {
+                if (result.output.isNotBlank()) append(result.output)
+                if (result.error.isNotBlank()) {
+                    if (length > 0) append("\n")
+                    append(result.error)
+                }
+            }
+            if (out.isNotBlank()) {
+                binding.etTerminal.append(out)
+                binding.etTerminal.append("\n")
+            }
+            if (result.exitCode != 0) {
+                binding.etTerminal.append("[exit ${result.exitCode}]")
+                binding.etTerminal.append("\n")
+            }
+            binding.etTerminal.append(prompt)
+            binding.etTerminal.setSelection(binding.etTerminal.text.length)
+        }
+    }
+
+    // 上下键回显历史：-1 更旧，+1 更新；翻到最新再向下则回到空白
+    private fun recallHistory(direction: Int) {
+        if (commandHistory.isEmpty()) return
+        val size = commandHistory.size
+        when {
+            historyIndex == -1 && direction < 0 -> historyIndex = size - 1
+            historyIndex == -1 && direction > 0 -> return
+            else -> {
+                val next = historyIndex + direction
+                historyIndex = when {
+                    next < 0 -> 0
+                    next >= size -> -1
+                    else -> next
+                }
+            }
+        }
+        val full = binding.etTerminal.text.toString()
+        val idx = full.lastIndexOf(prompt)
+        if (idx < 0) return
+        val prefix = full.substring(0, idx + prompt.length)
+        val replacement = if (historyIndex == -1) "" else commandHistory[historyIndex]
+        binding.etTerminal.setText(prefix + replacement)
+        binding.etTerminal.setSelection(binding.etTerminal.text.length)
+    }
+
+    // 退出终端：隐藏光标、清除焦点、隐藏软键盘，焦点交回主按钮
+    private fun exitCommandInput() {
+        terminalActive = false
+        binding.etTerminal.setCursorVisible(false)
+        binding.etTerminal.clearFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(binding.etTerminal.windowToken, 0)
+        (if (binding.btnStart.isFocusable) binding.btnStart else binding.btnStop).requestFocus()
     }
 
     private fun triggerStart() {
@@ -139,8 +323,10 @@ class MainActivity : AppCompatActivity() {
                 UbuntuService.detectStatus(this@MainActivity)
             }
             updateUI(state)
-            // 开机自动启动：已授权 Root 且开启开关，且当前未运行 -> 自动拉起
-            if (hasRoot && UbuntuService.getAutoStart(this@MainActivity) && state.status != UbuntuService.Status.RUNNING) {
+            // 勾选「开机自动启动」且已 Root 且当前未运行时，打开 App 自动拉起服务
+            if (hasRoot && UbuntuService.getAutoStart(this@MainActivity) &&
+                state.status == UbuntuService.Status.STOPPED
+            ) {
                 triggerStart()
             }
         }
@@ -156,6 +342,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUI(state: UbuntuService.ServiceState) {
+        binding.tvUbuntuVersion.text = UbuntuService.getUbuntuVersion(this)
         updateStatus(state.status, state.message, "")
         updateSSHInfo(state.sshInfo)
         applyButtonState(state.status == UbuntuService.Status.RUNNING)

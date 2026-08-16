@@ -10,7 +10,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -53,6 +53,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 | ⚙️ **Boot auto-start** | Optional "start Ubuntu on boot" + launch-on-boot receiver. |
 | 🛡️ **Robust shell layer** | `ShellExecutor` auto-detects `su` modes (interactive vs `su -c`), streams live progress, survives large output. |
 | 🚀 **Production web stack** | One-shot `bootstrap_server.sh` spins up **nginx + PHP-FPM + MariaDB + Redis** under `supervisor`. |
+| 🖥️ **Command console** | A built-in terminal card on the main screen streams live shell output (`cat /etc/os-release`, `df -h`, etc.) without leaving the TV. |
 
 ---
 
@@ -91,7 +92,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.2
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.3
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver
@@ -172,8 +173,8 @@ gradle wrapper            # regenerate the Gradle wrapper if needed
 ./gradlew assembleRelease # → app/build/outputs/apk/release/app-release.apk
 ```
 
-> ⚠️ The repo ships **without** the Gradle wrapper JAR (binary, not text-committable here).
-> The release APK is prebuilt, or use Android Studio which supplies its own Gradle.
+> 💡 仓库已包含 Gradle wrapper，直接运行 `./gradlew assembleRelease` 即可构建。
+> 若 wrapper 损坏，可用 Android Studio 重新生成，或下载发布版 APK。
 
 ---
 
@@ -243,6 +244,10 @@ mysql -u root                   # MariaDB (unix_socket auth)
 ---
 
 ## 📝 Changelog
+
+### v1.2.3
+- **Built-in command console.** The main screen now includes a live command terminal card. It streams shell output directly on the TV, so you can run quick checks like `cat /etc/os-release` or `df -h` without opening an SSH client.
+- **Bug fixes and stability improvements.** Polished edge cases in the shell executor and startup flow.
 
 ### v1.2.2
 - **Three-layer service auto-start.** `run_ubuntu.sh` now runs services in order on every boot: `/etc/rc.local` (your custom commands, kept for backward compatibility) → `supervisord` (if installed) → a generic `/etc/init.d/*` sweep that auto-discovers and starts any service exposing an init script. New services boot automatically on reboot with zero config changes; dangerous system scripts (halt/reboot/mount/…) are skipped for safety.

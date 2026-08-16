@@ -1,7 +1,13 @@
 package com.ubuntucontroller
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
+import android.os.Build
+import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -68,6 +74,7 @@ object UbuntuService {
     const val ARCH_AMD64 = "amd64"
     const val ARCH_ARM64 = "arm64"
     const val ARCH_ARMHF = "armhf"
+    val ARCH_OVERRIDES = listOf(ARCH_AUTO, ARCH_AMD64, ARCH_ARM64, ARCH_ARMHF)
 
     /**
      * 目标 rootfs 架构（1.2.1 修正）。
@@ -105,24 +112,44 @@ object UbuntuService {
         }
     }
 
+    /**
+     * 优先使用 EncryptedSharedPreferences 存储敏感配置；
+     * 在 Android Keystore 不可用或初始化失败时回退到普通 SharedPreferences。
+     */
+    private fun prefs(context: Context): SharedPreferences {
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.w("UbuntuService", "EncryptedSharedPreferences 初始化失败，回退明文存储", e)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+    }
+
     fun getArchOverride(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_ARCH_OVERRIDE, ARCH_AUTO) ?: ARCH_AUTO
+        return prefs(context).getString(KEY_ARCH_OVERRIDE, ARCH_AUTO) ?: ARCH_AUTO
     }
 
     fun setArchOverride(context: Context, arch: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_ARCH_OVERRIDE, arch).apply()
+        val a = if (arch in ARCH_OVERRIDES) arch else ARCH_AUTO
+        prefs(context).edit().putString(KEY_ARCH_OVERRIDE, a).apply()
     }
 
     fun getUbuntuVersion(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_UBUNTU_VERSION, UBUNTU_22) ?: UBUNTU_22
+        return prefs(context).getString(KEY_UBUNTU_VERSION, UBUNTU_22) ?: UBUNTU_22
     }
 
     fun setUbuntuVersion(context: Context, version: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_UBUNTU_VERSION, version).apply()
+        val v = if (version in UBUNTU_VERSIONS) version else UBUNTU_22
+        prefs(context).edit().putString(KEY_UBUNTU_VERSION, v).apply()
     }
 
     // rootfs 下载 URL：根据 Ubuntu 版本和 CPU 架构自动选择
@@ -149,63 +176,51 @@ object UbuntuService {
     }
 
     fun getStartScriptPath(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_START_SCRIPT, DEFAULT_START_SCRIPT) ?: DEFAULT_START_SCRIPT
+        return prefs(context).getString(KEY_START_SCRIPT, DEFAULT_START_SCRIPT) ?: DEFAULT_START_SCRIPT
     }
 
     fun setStartScriptPath(context: Context, path: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_START_SCRIPT, path).apply()
+        prefs(context).edit().putString(KEY_START_SCRIPT, path).apply()
     }
 
     fun getStopScriptPath(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_STOP_SCRIPT, DEFAULT_STOP_SCRIPT) ?: DEFAULT_STOP_SCRIPT
+        return prefs(context).getString(KEY_STOP_SCRIPT, DEFAULT_STOP_SCRIPT) ?: DEFAULT_STOP_SCRIPT
     }
 
     fun setStopScriptPath(context: Context, path: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_STOP_SCRIPT, path).apply()
+        prefs(context).edit().putString(KEY_STOP_SCRIPT, path).apply()
     }
 
     fun getSshPort(context: Context): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_SSH_PORT, DEFAULT_SSH_PORT)
+        return prefs(context).getInt(KEY_SSH_PORT, DEFAULT_SSH_PORT)
     }
 
     fun setSshPort(context: Context, port: Int) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_SSH_PORT, port).apply()
+        prefs(context).edit().putInt(KEY_SSH_PORT, port).apply()
     }
 
     fun getSshUser(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SSH_USER, DEFAULT_SSH_USER) ?: DEFAULT_SSH_USER
+        return prefs(context).getString(KEY_SSH_USER, DEFAULT_SSH_USER) ?: DEFAULT_SSH_USER
     }
 
     fun setSshUser(context: Context, user: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SSH_USER, user).apply()
+        prefs(context).edit().putString(KEY_SSH_USER, user).apply()
     }
 
     fun getSshPassword(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SSH_PASSWORD, DEFAULT_SSH_PASSWORD) ?: DEFAULT_SSH_PASSWORD
+        return prefs(context).getString(KEY_SSH_PASSWORD, DEFAULT_SSH_PASSWORD) ?: DEFAULT_SSH_PASSWORD
     }
 
     fun setSshPassword(context: Context, password: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SSH_PASSWORD, password).apply()
+        prefs(context).edit().putString(KEY_SSH_PASSWORD, password).apply()
     }
 
     fun getAutoStart(context: Context): Boolean {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_START, false)
+        return prefs(context).getBoolean(KEY_AUTO_START, false)
     }
 
     fun setAutoStart(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_AUTO_START, enabled).apply()
+        prefs(context).edit().putBoolean(KEY_AUTO_START, enabled).apply()
     }
 
     // 把 assets 里的 start.sh / stop.sh 部署到盒子（chroot 方案，无需 proot 二进制）。
@@ -223,8 +238,9 @@ object UbuntuService {
                     FileOutputStream(File(context.filesDir, dst)).use { outs -> ins.copyTo(outs) }
                 }
                 cmd.append(" && cp ${context.filesDir}/$dst $UBUNTU_DIR/$dst")
-            } catch (_: Exception) {
-                // 单个资源部署失败不阻塞其它资源
+            } catch (e: Exception) {
+                // 单个资源部署失败不阻塞其它资源，但记录日志便于排查
+                Log.e("UbuntuService", "部署资源失败: $asset", e)
             }
         }
         cmd.append(" && chmod 755 $UBUNTU_DIR/start.sh $UBUNTU_DIR/stop.sh")
@@ -411,6 +427,9 @@ object UbuntuService {
         )
     }
 
+    // 是否已启动（容器在运行，sshd 已拉起）。命令控制台执行前用它判断。
+    fun isRunning(context: Context): Boolean = probeState(context).running
+
     private data class Probe(val running: Boolean, val sshUp: Boolean)
 
     // 一次 root 会话同时探测：sshd 是否运行 + SSH 端口是否就绪
@@ -441,6 +460,28 @@ object UbuntuService {
         return if (out.isNotBlank()) out else "(无日志内容)"
     }
 
+    /**
+     * 在 Ubuntu 容器内执行命令（离线替代 SSH）。
+     * 要求 rootfs 已解压（首次「启动」完成后即可）；proc/sys/dev 仅在容器运行时挂载，
+     * 未运行时部分依赖挂载的命令会失败，属预期行为。
+     */
+    fun runInUbuntu(context: Context, command: String, timeoutMs: Long = 60_000): ShellExecutor.ShellResult {
+        val version = getUbuntuVersion(context)
+        val arch = rootfsArch(context)
+        val rootfs = "/data/local/ubuntu/rootfs.$version.$arch"
+        val exists = ShellExecutor.executeAsRoot("test -d $rootfs && echo ok")
+        if (exists.output.trim() != "ok") {
+            return ShellExecutor.ShellResult(
+                -1,
+                "",
+                "Ubuntu 未安装（未找到 rootfs: $rootfs），请先点击「启动」完成安装"
+            )
+        }
+        val escaped = command.replace("'", "'\\''")
+        val cmd = "chroot $rootfs /bin/bash -c 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $escaped'"
+        return ShellExecutor.executeAsRoot(cmd, timeoutMs)
+    }
+
     private fun buildSSHInfo(context: Context, sshUp: Boolean): SSHInfo {
         return SSHInfo(
             host = getDeviceIP(context) ?: "unknown",
@@ -451,8 +492,47 @@ object UbuntuService {
         )
     }
 
-    @Suppress("DEPRECATION")
     private fun getDeviceIP(context: Context): String? {
+        // API 23+ 优先使用 ConnectivityManager 获取 IPv4 地址
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE)
+                    as? ConnectivityManager
+                val activeNetwork = cm?.activeNetwork
+                val linkProperties = activeNetwork?.let { cm.getLinkProperties(it) }
+                linkProperties?.linkAddresses?.forEach { linkAddr ->
+                    val addr = linkAddr.address
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        // 兜底 1：遍历网卡（优先有线/无线接口）
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.name.startsWith("eth") ||
+                    iface.name.startsWith("wlan") ||
+                    iface.name.startsWith("wl")
+                ) {
+                    val addresses = iface.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val addr = addresses.nextElement()
+                        if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                            return addr.hostAddress
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        // 兜底 2：已废弃的 WifiManager（兼容旧设备）
+        @Suppress("DEPRECATION")
         try {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             val wifiInfo = wifiManager?.connectionInfo
@@ -469,22 +549,6 @@ object UbuntuService {
         } catch (_: Exception) {
         }
 
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
-                if (iface.name.startsWith("eth") || iface.name.startsWith("wlan")) {
-                    val addresses = iface.inetAddresses
-                    while (addresses.hasMoreElements()) {
-                        val addr = addresses.nextElement()
-                        if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                            return addr.hostAddress
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {
-        }
         return null
     }
 }

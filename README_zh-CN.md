@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -52,6 +52,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 | ⚙️ **开机自启** | 可选「开机自动启动 Ubuntu」+ 开机广播接收器自动拉起。 |
 | 🛡️ **稳健的 Shell 层** | `ShellExecutor` 自动探测 `su` 模式（交互式 vs `su -c`），流式实时进度，可承受大输出不卡死。 |
 | 🚀 **生产级 Web 栈** | 一条命令的 `bootstrap_server.sh` 在 `supervisor` 下拉起 **nginx + PHP-FPM + MariaDB + Redis**。 |
+| 🖥️ **命令控制台** | 主界面新增实时命令终端卡片，可直接在电视上查看 `cat /etc/os-release`、`df -h` 等输出，无需离开电视去开 SSH 客户端。 |
 
 ---
 
@@ -90,7 +91,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.2
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.3
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器
@@ -246,6 +247,10 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.2.3
+- **新增命令控制台。** 主界面现在内置一个实时命令终端卡片，可直接在电视上滚动显示 shell 输出，例如 `cat /etc/os-release`、`df -h`，不用再去开 SSH 客户端。
+- **Bug 修复与稳定性改进。** 优化了 Shell 执行器与启动流程中的边界情况。
 
 ### v1.2.2
 - **三层服务自启动。** `run_ubuntu.sh` 现在每次开机按序执行：`/etc/rc.local`（你自定义的命令，保留以兼容旧用法）→ 若已安装则启动 `supervisord` → 通用 `/etc/init.d/*` 遍历，自动发现并启动任何带 init 脚本的服务。

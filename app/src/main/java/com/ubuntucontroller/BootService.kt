@@ -1,0 +1,82 @@
+package com.ubuntucontroller
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
+/**
+ * 开机自启前台服务：在后台完成 Ubuntu rootfs 部署与 SSH 启动，
+ * 避免 Android 10+ 限制从 BroadcastReceiver 直接启动 Activity。
+ */
+class BootService : Service() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val notificationId = 1
+    private val channelId = "ubuntu_boot"
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!UbuntuService.getAutoStart(this)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        startForeground(notificationId, buildNotification(getString(R.string.boot_service_starting), 0))
+
+        serviceScope.launch {
+            UbuntuService.startUbuntu(this@BootService) { pct, msg ->
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(notificationId, buildNotification(msg, pct))
+            }
+            stopSelf(startId)
+        }
+
+        return START_NOT_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                getString(R.string.boot_service_channel_name),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = getString(R.string.boot_service_channel_desc)
+            }
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(content: String, progress: Int): android.app.Notification {
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle(getString(R.string.boot_service_title))
+            .setContentText(content)
+            .setSmallIcon(R.drawable.ic_ubuntu)
+            .setOngoing(true)
+            .setProgress(100, progress, progress <= 0)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
+}

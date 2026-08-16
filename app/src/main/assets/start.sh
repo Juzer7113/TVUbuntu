@@ -13,6 +13,16 @@ SSH_PASS="${2:-Aa123456}"
 VERSION="${3:-22.04}"
 ARCH="${4:-arm64}"
 
+# 校验输入，防止路径注入/误删（P1-1）
+case "$VERSION" in
+  22.04|24.04|26.04) ;;
+  *) echo "ERROR: unsupported version $VERSION" >&2; exit 1 ;;
+esac
+case "$ARCH" in
+  amd64|arm64|armhf) ;;
+  *) echo "ERROR: unsupported arch $ARCH" >&2; exit 1 ;;
+esac
+
 # 关键：以 App 传入的 $ARCH 为唯一架构依据，不再用 uname -m。
 # 原因：MuMu 等模拟器会把 uname -m 伪装成 aarch64，导致错误下载 arm64 rootfs；
 # 而真实内核是 x86_64，应下载 amd64 rootfs。App 端已用 getprop 综合判断真实架构。
@@ -76,6 +86,16 @@ mkdir -p "$ROOTFS" "$TMP"
 
 # 判断某路径是否已挂载（-F 固定字符串匹配，避免路径中的 . 被当作正则）
 is_mounted() { mount 2>/dev/null | grep -qF " $1 "; }
+
+# 安全路径校验：拒绝绝对路径与逃离 ROOTFS 的相对路径（P1-2）
+is_safe_link() {
+  local link="$1" target="$2"
+  case "$link" in /*) return 1 ;; esac
+  case "$target" in /*) return 1 ;; esac
+  case "$link" in *../*|*..) return 1 ;; esac
+  case "$target" in *../*|*..) return 1 ;; esac
+  return 0
+}
 
 # 挂载 proc/sys/dev 到 rootfs，并 bind 单个日志文件到 rootfs/hostlog（供容器内实时写宿主日志）
 mount_system() {
@@ -213,6 +233,10 @@ fix_symlinks_from_tar() {
     }
   }' | while IFS="$tab" read -r link target; do
     [ -n "$link" ] || continue
+    if ! is_safe_link "$link" "$target"; then
+      log "[install] 跳过不安全 symlink: $link -> $target" >> "$ROOT/ubuntu.log"
+      continue
+    fi
     local full="$ROOTFS/$link"
     local need_fix=0
     if [ ! -L "$full" ]; then
@@ -248,6 +272,10 @@ fix_tar_extras() {
     if (idx > 0) print substr(rest, 1, idx-1) "\t" substr(rest, idx+9)
   }' | while IFS="$tab" read -r link target; do
     [ -n "$link" ] || continue
+    if ! is_safe_link "$link" "$target"; then
+      log "[install] 跳过不安全硬链接: $link -> $target" >> "$ROOT/ubuntu.log"
+      continue
+    fi
     if [ ! -e "$ROOTFS/$link" ] && [ -e "$ROOTFS/$target" ]; then
       ln "$ROOTFS/$target" "$ROOTFS/$link" 2>/dev/null && log "[install] 修复硬链接: $link -> $target" >> "$ROOT/ubuntu.log"
     fi
@@ -797,6 +825,7 @@ chmod 755 "$ROOTFS/run_ubuntu.sh"
 # 挂载系统目录并后台拉起 chroot 容器（保持挂载供 sshd 使用）
 mount_system
 $CHROOT_BIN "$ROOTFS" /bin/bash /run_ubuntu.sh >> "$ROOT/ubuntu.log" 2>&1 &
+echo $! > "$ROOT/run_ubuntu.pid"
 
 # host 侧诊断
 {

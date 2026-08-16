@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature
         android:name="android.software.leanback"
@@ -44,7 +47,7 @@
             android:windowSoftInputMode="stateHidden"
             android:theme="@style/Theme.UbuntuController" />
 
-        <!-- 开机自启：监听系统开机广播，自动拉起主界面 -->
+        <!-- 开机自启：监听系统开机广播，通过前台服务在后台启动 Ubuntu -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -55,6 +58,12 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".BootService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
     </application>
 
 </manifest>

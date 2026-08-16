@@ -23,6 +23,7 @@
     <string name="log_empty">日志为空</string>
 
     <string name="ssh_service">SSH 服务</string>
+    <string name="ssh_version">Ubuntu 版本</string>
     <string name="ssh_host">主机地址</string>
     <string name="ssh_user">用户名</string>
     <string name="ssh_password">密码</string>
@@ -44,4 +45,16 @@
     <string name="setting_ssh_user">SSH 用户名</string>
     <string name="setting_ssh_password">SSH 密码</string>
     <string name="setting_auto_start">开机自动启动 Ubuntu</string>
+
+    <string name="boot_service_title">Ubuntu 控制器</string>
+    <string name="boot_service_starting">正在后台启动 Ubuntu…</string>
+    <string name="boot_service_channel_name">开机自启服务</string>
+    <string name="boot_service_channel_desc">设备开机后自动启动 Ubuntu 的前台服务通知</string>
+
+    <string name="command_title">命令控制台</string>
+    <string name="command_hint">输入 Ubuntu 命令</string>
+    <string name="command_prompt">ubuntu:~$</string>
+    <string name="command_empty">请输入命令</string>
+    <string name="command_output_hint">输出将显示在这里</string>
+    <string name="command_not_running">Ubuntu 未启动，请先点击「启动」</string>
 </resources>

@@ -4,6 +4,7 @@ import java.io.BufferedReader
 import java.io.DataOutputStream
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object ShellExecutor {
 
@@ -15,8 +16,7 @@ object ShellExecutor {
 
     // su 实现模式：0=未探测 1=交互式(su 会话 stdin 喂命令) 2=单条式(su -c)
     // 不同盒子/模拟器的 su (Magisk/SuperSU/AOSP) 对两种模式支持不一，自动探测并缓存
-    @Volatile
-    private var suMode = 0
+    private val suMode = AtomicInteger(0)
 
     private fun writeCommand(os: DataOutputStream, command: String) {
         // UTF-8 写入，避免用户设置含中文的密码等参数被截断为单字节
@@ -41,7 +41,7 @@ object ShellExecutor {
     }
 
     fun executeAsRoot(command: String): ShellResult {
-        if (suMode != 2) {
+        if (suMode.get() != 2) {
             return try {
                 val process = Runtime.getRuntime().exec("su")
                 val errBuilder = StringBuilder()
@@ -56,7 +56,7 @@ object ShellExecutor {
                 val stdout = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).readText()
                 val exitCode = process.waitFor()
                 errThread.join(2000)
-                if (suMode == 0 && exitCode == 0) suMode = 1
+                if (suMode.get() == 0 && exitCode == 0) suMode.set(1)
                 ShellResult(exitCode, stdout.trim(), synchronized(errBuilder) { errBuilder.toString().trim() })
             } catch (e: Exception) {
                 fallbackToSuC(command)
@@ -65,8 +65,16 @@ object ShellExecutor {
         return suMinusC(command)
     }
 
+    /**
+     * 以 root 执行命令，带超时保护。
+     * @param timeoutMs 超时时间（毫秒），超过未结束则强制 kill 并返回 exitCode=-999。
+     */
+    fun executeAsRoot(command: String, timeoutMs: Long): ShellResult {
+        return executeAsRootStreaming(command, timeoutMs) { }
+    }
+
     private fun fallbackToSuC(command: String): ShellResult {
-        suMode = 2
+        suMode.set(2)
         return suMinusC(command)
     }
 
@@ -116,11 +124,11 @@ object ShellExecutor {
         timeoutMs: Long = 0,
         onLine: (String) -> Unit
     ): ShellResult {
-        if (suMode != 2) {
+        if (suMode.get() != 2) {
             return try {
                 val process = Runtime.getRuntime().exec("su")
                 val result = streamProcess(process, command, timeoutMs, onLine)
-                if (suMode == 0 && result.exitCode == 0) suMode = 1
+                if (suMode.get() == 0 && result.exitCode == 0) suMode.set(1)
                 result
             } catch (e: Exception) {
                 suMinusCStreaming(command, timeoutMs, onLine)
@@ -200,7 +208,7 @@ object ShellExecutor {
         timeoutMs: Long,
         onLine: (String) -> Unit
     ): ShellResult {
-        suMode = 2
+        suMode.set(2)
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             streamProcess(process, command, timeoutMs, onLine)

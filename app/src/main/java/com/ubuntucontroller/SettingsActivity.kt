@@ -123,8 +123,10 @@ class SettingsActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val version = selectedUbuntuVersion()
-            val arch = selectedArch()
+            val version = selectedUbuntuVersion().takeIf { it in UbuntuService.UBUNTU_VERSIONS }
+                ?: UbuntuService.UBUNTU_22
+            val arch = selectedArch().takeIf { it in UbuntuService.ARCH_OVERRIDES }
+                ?: UbuntuService.ARCH_AUTO
 
             if (user.isEmpty()) {
                 Toast.makeText(this, "用户名不能为空", Toast.LENGTH_SHORT).show()
