@@ -13,7 +13,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.3.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -47,7 +47,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 
 | Feature | Description |
 | --- | --- |
-| 🐧 **Native chroot** | Uses the kernel-native `chroot` — no `proot` binary, lighter and faster. |
+| 🐧 **Native chroot (Root mode)** | In Root mode, uses the kernel-native `chroot` — no `proot` binary, lighter and faster. |
 | 📡 **Auto rootfs download** | App downloads the minimal `ubuntu-base` tarball and decodes gzip on-device (avoids the box's `toybox tar` quirks). |
 | 🔑 **Zero-config SSH** | Installs & launches `openssh-server`, then displays host / user / password / port on the TV. |
 | 🎮 **TV-remote UI** | D-Pad navigation, focus-scaling "cursor" animation, large high-contrast buttons — built for a remote, not a touchscreen. |
@@ -57,6 +57,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 | 🛡️ **Robust shell layer** | `ShellExecutor` auto-detects `su` modes (interactive vs `su -c`), streams live progress, survives large output. |
 | 🚀 **Production web stack** | One-shot `bootstrap_server.sh` spins up **nginx + PHP-FPM + MariaDB + Redis** under `supervisor`. |
 | 🖥️ **Command console** | A built-in terminal card on the main screen streams live shell output (`cat /etc/os-release`, `df -h`, etc.) without leaving the TV. |
+| 🌱 **No-root Proot mode** | No root? Run Ubuntu via `proot` instead — the same real Ubuntu userland, just without privileged ports (<1024) and systemd. Perfect for locked-down or unrooted boxes. |
 
 ---
 
@@ -95,7 +96,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.2.3
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.3.1
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver
@@ -162,7 +163,7 @@ You:  ssh root@<device-ip>   → a real Ubuntu shell 🎉
    adb install TVUbuntu.apk
    # or copy the APK to the box and open it from a file manager
    ```
-4. Open **Ubuntu 控制器** from the TV launcher. Grant root when prompted.
+4. Open **Ubuntu Controller** from the TV launcher. Grant root when prompted.
 
 > 💡 Grab the latest `TVUbuntu.apk` from the [Releases](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases) page.
 
@@ -176,15 +177,15 @@ gradle wrapper            # regenerate the Gradle wrapper if needed
 ./gradlew assembleRelease # → app/build/outputs/apk/release/app-release.apk
 ```
 
-> 💡 仓库已包含 Gradle wrapper，直接运行 `./gradlew assembleRelease` 即可构建。
-> 若 wrapper 损坏，可用 Android Studio 重新生成，或下载发布版 APK。
+> 💡 The repo already ships the Gradle wrapper — just run `./gradlew assembleRelease` to build.
+> If the wrapper is broken, regenerate it in Android Studio or grab the release APK.
 
 ---
 
 ## 🕹️ Usage
 
 1. Launch the app on the TV. It detects root and shows the current status.
-2. Press **启动 Ubuntu** (Start). First launch downloads the rootfs (~28 MB) and installs
+2. Press **Start Ubuntu**. First launch downloads the rootfs (~28 MB) and installs
    OpenSSH (~40 MB of packages) — this can take a few minutes. Subsequent starts are instant.
 3. When status turns green, the **SSH card** shows:
    - **Host** — the box's LAN IP (WiFi preferred, eth0 fallback)
@@ -195,21 +196,22 @@ gradle wrapper            # regenerate the Gradle wrapper if needed
    ```bash
    ssh root@192.168.1.x      # password: Aa123456
    ```
-5. To stop: press **停止 Ubuntu** (Stop).
+5. To stop: press **Stop Ubuntu**.
 
 ---
 
 ## ⚙️ Settings
 
-Open **配置** (Settings) on the main screen:
+Open **Settings** on the main screen:
 
 | Setting | Meaning |
 | --- | --- |
-| Ubuntu 版本 | 22.04 / 24.04 / 26.04 |
-| CPU 架构 | auto / amd64 / arm64 / armhf (override auto-detection) |
-| 启动/停止脚本路径 | default `/data/local/ubuntu/start.sh` & `stop.sh` |
-| SSH 端口 / 用户名 / 密码 | connection credentials |
-| 开机自动启动 | boot the box straight into Ubuntu |
+| Ubuntu version | 22.04 / 24.04 / 26.04 |
+| CPU architecture | auto / amd64 / arm64 / armhf (override auto-detection) |
+| Runtime mode | Root (chroot) / Proot (no-root) |
+| Start/Stop script path | default `/data/local/ubuntu/start.sh` & `stop.sh` |
+| SSH port / user / password | connection credentials |
+| Auto-start on boot | boot the box straight into Ubuntu |
 
 ---
 
@@ -238,15 +240,20 @@ mysql -u root                   # MariaDB (unix_socket auth)
 
 | Symptom | Fix |
 | --- | --- |
-| "Root 未授权" | Grant root to the app in Magisk/SuperSU. |
+| "Root denied" | Grant root to the app in Magisk/SuperSU. |
 | Download fails | Confirm the box has internet; the App fetches from `cdimage.ubuntu.com`. |
-| SSH not ready after start | Tap **复制日志** (Copy Log) and inspect `/data/local/ubuntu/ubuntu.log`. |
+| SSH not ready after start | Tap **Copy Log** and inspect `/data/local/ubuntu/ubuntu.log`. |
 | `chroot` smoke-test fails | Usually SELinux; the script already tries `setenforce 0` + `chcon`. Check the log. |
-| Emulator shows wrong arch | Set **CPU 架构 = amd64** in Settings. |
+| Emulator shows wrong arch | Set **CPU architecture = amd64** in Settings. |
 
 ---
 
 ## 📝 Changelog
+
+### v1.3.1
+- **Version bump** to `1.3.1` (versionCode 5 → 8); prior minor iterations had not kept versionCode in sync.
+- **Low-port note (Proot mode):** Proot mode runs *unprivileged* — Android restricts non-root processes to binding ports **≥ 1024** (`net.ipv4.ip_unprivileged_port_start=1024`). So nginx/Baota (aaPanel) listening on `888` fails with `bind() to 0.0.0.0:888 failed (13: Permission denied)` — that is an Android kernel limit, **not** an app-level port block (the app's own SSH daemon uses 8022 for this reason). Fix: use a port ≥ 1024 (e.g. `listen 8088`) or run in Root mode.
+- **Arch & Android version coverage confirmed:** detection uses `getprop ro.product.cpu.abilist` + `uname -m` (handles x86_64, MuMu faked-aarch64 correction, aarch64, armv7/armv8); `minSdk 21` (Android 5.0) + `targetSdk 34` (Android 14); all three ABI libproot.so already carry the empty-path fix — emulator and real device behave the same.
 
 ### v1.2.3
 - **Built-in command console.** The main screen now includes a live command terminal card. It streams shell output directly on the TV, so you can run quick checks like `cat /etc/os-release` or `df -h` without opening an SSH client.
@@ -262,7 +269,7 @@ mysql -u root                   # MariaDB (unix_socket auth)
 
 ## 📜 License
 
-[MIT](LICENSE) © 2026 吉大大侠 / jiyanlin7113-rgb. Free for personal and commercial use.
+[MIT](LICENSE) © 2026 Jiyan Daxia / jiyanlin7113-rgb. Free for personal and commercial use.
 Note: running a chroot requires root and is at your own risk — it may void warranties
 and can brick misconfigured devices.
 

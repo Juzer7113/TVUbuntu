@@ -15,8 +15,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * 开机自启前台服务：在后台完成 Ubuntu rootfs 部署与 SSH 启动，
- * 避免 Android 10+ 限制从 BroadcastReceiver 直接启动 Activity。
+ * @deprecated v1.2.6 起自启语义改为「软件启动时启动 Ubuntu」，开机广播链路（BootReceiver →
+ * BootService）已从 AndroidManifest 移除，本类不会再被启动。保留文件仅作历史参考，可安全删除。
+ * 原功能：在后台完成 Ubuntu rootfs 部署与 SSH 启动，避免 Android 10+ 限制从
+ * BroadcastReceiver 直接启动 Activity。
  */
 class BootService : Service() {
 
@@ -38,7 +40,7 @@ class BootService : Service() {
         startForeground(notificationId, buildNotification(getString(R.string.boot_service_starting), 0))
 
         serviceScope.launch {
-            UbuntuService.startUbuntu(this@BootService) { pct, msg ->
+            UbuntuRuntime.start(this@BootService) { pct, msg ->
                 val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 nm.notify(notificationId, buildNotification(msg, pct))
             }

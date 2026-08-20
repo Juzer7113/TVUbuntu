@@ -49,6 +49,7 @@ object UbuntuService {
     private const val DEFAULT_SSH_PASSWORD = "Aa123456"
     private const val SSH_UP_FLAG = "/data/local/ubuntu/.ssh_up"
     private const val PREFS_NAME = "ubuntu_controller_prefs"
+    private const val SECURE_PREFS_NAME = "ubuntu_controller_secure"
     private const val KEY_START_SCRIPT = "start_script_path"
     private const val KEY_STOP_SCRIPT = "stop_script_path"
     private const val KEY_SSH_PORT = "ssh_port"
@@ -57,6 +58,8 @@ object UbuntuService {
     private const val KEY_AUTO_START = "auto_start"
     private const val KEY_UBUNTU_VERSION = "ubuntu_version"
     private const val KEY_ARCH_OVERRIDE = "arch_override"
+    private const val KEY_RUNTIME_MODE = "runtime_mode"
+    private const val KEY_PROOT_SSH_PORT = "proot_ssh_port"
 
     private const val UBUNTU_DIR = "/data/local/ubuntu"
     // tar 文件名按「版本+架构」命名，避免切换版本后误用旧文件
@@ -77,79 +80,111 @@ object UbuntuService {
     val ARCH_OVERRIDES = listOf(ARCH_AUTO, ARCH_AMD64, ARCH_ARM64, ARCH_ARMHF)
 
     /**
-     * 目标 rootfs 架构（1.2.1 修正）。
-     * 关键判断：以 uname -m 为「设备自报架构」基准，
-     * 仅当【真实架构是 x86_64 且 uname 不是 x86_64】时才纠正成 x86_64。
-     *
-     *   - MuMu 等 x86 模拟器把 uname -m 伪装成 aarch64，但 getprop 暴露真 x86
-     *     → 触发纠正，rootfs 用 amd64，Python/pip 从此读真值 ✅
-     *   - 真实 arm64 盒子 → uname 本就是 aarch64，不触发，Python 正确识别 arm64 ✅
-     *   - 真实 armhf 老设备 → uname 本就是 armv7l，不触发，Python 正确识别 armhf ✅
-     *   - 真实 x86 盒子/电脑 → uname 本就是 x86_64，不触发 ✅
-     *
-     * 用户仍可在设置里手动覆盖。
+     * 自动探测设备真实硬件架构（不含手动覆盖）。
+     * 以 uname -m 为「设备自报架构」基准，仅当【真实架构是 x86_64 且 uname 不是 x86_64】时纠正成 x86_64。
+     *   - MuMu 等 x86 模拟器把 uname -m 伪装成 aarch64，但 getprop 暴露真 x86 → 纠正为 amd64
+     *   - 真实 arm64 盒子 → aarch64
+     *   - 真实 armhf 老设备 → armv7l → armhf
+     *   - 真实 x86 盒子/电脑 → x86_64 → amd64
      */
-    fun rootfsArch(context: Context? = null): String {
-        if (context != null) {
-            val override = getArchOverride(context)
-            if (override == ARCH_AMD64 || override == ARCH_ARM64 || override == ARCH_ARMHF) return override
-        }
+    fun detectHardwareArch(): String {
         val props = ShellExecutor.execute(
             "getprop ro.product.cpu.abilist; getprop ro.product.cpu.abi"
         ).output
-        // getprop 暴露的「真实是否支持 x86_64」（模拟器翻译层会暴露，真 ARM 不会）
         val realX86 = props.contains("x86_64")
         val r = ShellExecutor.execute("uname -m").output.trim()
         return when {
-            // 仅当真实架构是 x86_64 且 uname 被伪装成非 x86 时，才纠正为 amd64
             realX86 && !r.contains("x86_64") -> ARCH_AMD64
             r.contains("x86_64") -> ARCH_AMD64
             r.contains("aarch64") -> ARCH_ARM64
             r.contains("armv7") || r.contains("armv8") -> ARCH_ARMHF
-            // 兜底：abi 判断（32 位 ARM）
             props.contains("armeabi-v7a") && !props.contains("arm64-v8a") -> ARCH_ARMHF
             else -> ARCH_ARM64
         }
     }
 
-    /**
-     * 优先使用 EncryptedSharedPreferences 存储敏感配置；
-     * 在 Android Keystore 不可用或初始化失败时回退到普通 SharedPreferences。
-     */
-    private fun prefs(context: Context): SharedPreferences {
-        return try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            Log.w("UbuntuService", "EncryptedSharedPreferences 初始化失败，回退明文存储", e)
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // 目标 rootfs 架构：手动覆盖优先，否则自动探测
+    fun rootfsArch(context: Context? = null): String {
+        if (context != null) {
+            val override = getArchOverride(context)
+            if (override == ARCH_AMD64 || override == ARCH_ARM64 || override == ARCH_ARMHF) return override
+        }
+        return detectHardwareArch()
+    }
+
+    // 判断目标架构能否在当前硬件上运行：32 位设备跑不了 64 位系统，x86 跑不了 ARM 等
+    fun isArchCompatible(target: String, hardware: String): Boolean {
+        return when (hardware) {
+            ARCH_AMD64 -> target == ARCH_AMD64
+            ARCH_ARM64 -> target == ARCH_ARM64 || target == ARCH_ARMHF
+            ARCH_ARMHF -> target == ARCH_ARMHF
+            else -> true
+        }
+    }
+
+    // 非敏感配置（版本/架构/端口/用户/脚本路径/自启）用普通 SharedPreferences，稳定不受 Keystore 影响
+    private var cachedPlainPrefs: SharedPreferences? = null
+    private fun plainPrefs(context: Context): SharedPreferences {
+        return cachedPlainPrefs
+            ?: context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).also { cachedPlainPrefs = it }
+    }
+
+    // 仅 SSH 密码用加密存储，单独文件，避免影响其它配置；加密初始化失败回退明文（独立文件）
+    private var cachedSecurePrefs: SharedPreferences? = null
+    private fun securePrefs(context: Context): SharedPreferences {
+        return cachedSecurePrefs ?: run {
+            val sp = try {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    SECURE_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            } catch (e: Exception) {
+                Log.w("UbuntuService", "加密存储初始化失败，密码回退明文存储", e)
+                context.getSharedPreferences(SECURE_PREFS_NAME, Context.MODE_PRIVATE)
+            }
+            cachedSecurePrefs = sp
+            sp
         }
     }
 
     fun getArchOverride(context: Context): String {
-        return prefs(context).getString(KEY_ARCH_OVERRIDE, ARCH_AUTO) ?: ARCH_AUTO
+        return plainPrefs(context).getString(KEY_ARCH_OVERRIDE, ARCH_AUTO) ?: ARCH_AUTO
     }
 
     fun setArchOverride(context: Context, arch: String) {
         val a = if (arch in ARCH_OVERRIDES) arch else ARCH_AUTO
-        prefs(context).edit().putString(KEY_ARCH_OVERRIDE, a).apply()
+        plainPrefs(context).edit().putString(KEY_ARCH_OVERRIDE, a).apply()
+    }
+
+    fun getRuntimeMode(context: Context): RuntimeMode {
+        return RuntimeMode.from(plainPrefs(context).getString(KEY_RUNTIME_MODE, RuntimeMode.AUTO.value))
+    }
+
+    fun setRuntimeMode(context: Context, mode: RuntimeMode) {
+        plainPrefs(context).edit().putString(KEY_RUNTIME_MODE, mode.value).apply()
+    }
+
+    fun getProotSshPort(context: Context): Int {
+        return plainPrefs(context).getInt(KEY_PROOT_SSH_PORT, ProotUbuntuService.DEFAULT_PROOT_SSH_PORT)
+    }
+
+    fun setProotSshPort(context: Context, port: Int) {
+        plainPrefs(context).edit().putInt(KEY_PROOT_SSH_PORT, port.coerceAtLeast(1024)).apply()
     }
 
     fun getUbuntuVersion(context: Context): String {
-        return prefs(context).getString(KEY_UBUNTU_VERSION, UBUNTU_22) ?: UBUNTU_22
+        return plainPrefs(context).getString(KEY_UBUNTU_VERSION, UBUNTU_22) ?: UBUNTU_22
     }
 
     fun setUbuntuVersion(context: Context, version: String) {
         val v = if (version in UBUNTU_VERSIONS) version else UBUNTU_22
-        prefs(context).edit().putString(KEY_UBUNTU_VERSION, v).apply()
+        plainPrefs(context).edit().putString(KEY_UBUNTU_VERSION, v).apply()
     }
 
     // rootfs 下载 URL：根据 Ubuntu 版本和 CPU 架构自动选择
@@ -176,51 +211,51 @@ object UbuntuService {
     }
 
     fun getStartScriptPath(context: Context): String {
-        return prefs(context).getString(KEY_START_SCRIPT, DEFAULT_START_SCRIPT) ?: DEFAULT_START_SCRIPT
+        return plainPrefs(context).getString(KEY_START_SCRIPT, DEFAULT_START_SCRIPT) ?: DEFAULT_START_SCRIPT
     }
 
     fun setStartScriptPath(context: Context, path: String) {
-        prefs(context).edit().putString(KEY_START_SCRIPT, path).apply()
+        plainPrefs(context).edit().putString(KEY_START_SCRIPT, path).apply()
     }
 
     fun getStopScriptPath(context: Context): String {
-        return prefs(context).getString(KEY_STOP_SCRIPT, DEFAULT_STOP_SCRIPT) ?: DEFAULT_STOP_SCRIPT
+        return plainPrefs(context).getString(KEY_STOP_SCRIPT, DEFAULT_STOP_SCRIPT) ?: DEFAULT_STOP_SCRIPT
     }
 
     fun setStopScriptPath(context: Context, path: String) {
-        prefs(context).edit().putString(KEY_STOP_SCRIPT, path).apply()
+        plainPrefs(context).edit().putString(KEY_STOP_SCRIPT, path).apply()
     }
 
     fun getSshPort(context: Context): Int {
-        return prefs(context).getInt(KEY_SSH_PORT, DEFAULT_SSH_PORT)
+        return plainPrefs(context).getInt(KEY_SSH_PORT, DEFAULT_SSH_PORT)
     }
 
     fun setSshPort(context: Context, port: Int) {
-        prefs(context).edit().putInt(KEY_SSH_PORT, port).apply()
+        plainPrefs(context).edit().putInt(KEY_SSH_PORT, port).apply()
     }
 
     fun getSshUser(context: Context): String {
-        return prefs(context).getString(KEY_SSH_USER, DEFAULT_SSH_USER) ?: DEFAULT_SSH_USER
+        return plainPrefs(context).getString(KEY_SSH_USER, DEFAULT_SSH_USER) ?: DEFAULT_SSH_USER
     }
 
     fun setSshUser(context: Context, user: String) {
-        prefs(context).edit().putString(KEY_SSH_USER, user).apply()
+        plainPrefs(context).edit().putString(KEY_SSH_USER, user).apply()
     }
 
     fun getSshPassword(context: Context): String {
-        return prefs(context).getString(KEY_SSH_PASSWORD, DEFAULT_SSH_PASSWORD) ?: DEFAULT_SSH_PASSWORD
+        return securePrefs(context).getString(KEY_SSH_PASSWORD, DEFAULT_SSH_PASSWORD) ?: DEFAULT_SSH_PASSWORD
     }
 
     fun setSshPassword(context: Context, password: String) {
-        prefs(context).edit().putString(KEY_SSH_PASSWORD, password).apply()
+        securePrefs(context).edit().putString(KEY_SSH_PASSWORD, password).apply()
     }
 
     fun getAutoStart(context: Context): Boolean {
-        return prefs(context).getBoolean(KEY_AUTO_START, false)
+        return plainPrefs(context).getBoolean(KEY_AUTO_START, false)
     }
 
     fun setAutoStart(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_AUTO_START, enabled).apply()
+        plainPrefs(context).edit().putBoolean(KEY_AUTO_START, enabled).apply()
     }
 
     // 把 assets 里的 start.sh / stop.sh 部署到盒子（chroot 方案，无需 proot 二进制）。
@@ -327,6 +362,15 @@ object UbuntuService {
         val password = getSshPassword(context)
         val version = getUbuntuVersion(context)
         val arch = rootfsArch(context)
+        // 硬件兼容校验：32 位设备选 arm64/amd64 等不兼容架构时，明确报错，不静默降级
+        val hwArch = detectHardwareArch()
+        if (!isArchCompatible(arch, hwArch)) {
+            return ServiceState(
+                Status.ERROR,
+                "当前设备硬件是 $hwArch，无法运行 $arch 系统；请到「配置」把架构改为「自动」或 $hwArch",
+                null
+            )
+        }
         val targetTar = targetTar(context)
 
         // 单次 root 会话完成前置检查：脚本是否存在 + 当前版本/架构的 tar 是否已下载
@@ -368,7 +412,7 @@ object UbuntuService {
                 val msg = if (sshInfo?.isRunning == true) {
                     "Ubuntu 启动成功"
                 } else {
-                    "Ubuntu 已启动，但 SSH 未就绪（见下方日志）\n" + readUbuntuLogTail()
+                    "Ubuntu 已启动，但 SSH 未就绪（点「复制日志」可获取完整日志）"
                 }
                 ServiceState(Status.RUNNING, msg, sshInfo)
             }
@@ -420,9 +464,14 @@ object UbuntuService {
     fun detectStatus(context: Context): ServiceState {
         val probe = probeState(context)
         val sshInfo = if (probe.running) buildSSHInfo(context, probe.sshUp) else null
+        val message = when {
+            !probe.running -> "Ubuntu 未运行"
+            probe.sshUp -> "Ubuntu 运行中"
+            else -> "Ubuntu 已启动，但 SSH 未就绪（点「复制日志」可获取完整日志）"
+        }
         return ServiceState(
             if (probe.running) Status.RUNNING else Status.STOPPED,
-            if (probe.running) "Ubuntu 运行中" else "Ubuntu 未运行",
+            message,
             sshInfo
         )
     }
@@ -443,15 +492,7 @@ object UbuntuService {
         return Probe(r.output.contains("UC_RUN"), r.output.contains("UC_SSHUP"))
     }
 
-    private fun readUbuntuLogTail(): String {
-        val r = ShellExecutor.executeAsRoot(
-            "tail -n 100 $UBUNTU_DIR/ubuntu.log 2>/dev/null || echo '(无日志文件)'"
-        )
-        val out = r.output.trim()
-        return if (out.isNotBlank()) out else "(无日志内容)"
-    }
-
-    // 供界面「复制日志」按钮读取完整日志尾部
+    // 供界面「复制日志」按钮读取完整日志（不截断）
     fun readLog(): String {
         val r = ShellExecutor.executeAsRoot(
             "cat $UBUNTU_DIR/ubuntu.log 2>/dev/null || echo '(无日志文件)'"
@@ -492,7 +533,7 @@ object UbuntuService {
         )
     }
 
-    private fun getDeviceIP(context: Context): String? {
+    internal fun getDeviceIP(context: Context): String? {
         // API 23+ 优先使用 ConnectivityManager 获取 IPv4 地址
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {

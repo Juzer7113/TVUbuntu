@@ -11,8 +11,8 @@ android {
         applicationId = "com.ubuntucontroller"
         minSdk = 21
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.2.3"
+        versionCode = 8
+        versionName = "1.3.1"
     }
 
     buildTypes {

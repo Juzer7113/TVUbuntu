@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.2.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.3.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -43,7 +43,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 
 | 特性 | 说明 |
 | --- | --- |
-| 🐧 **原生 chroot** | 使用内核原生的 `chroot`，无需 `proot` 二进制，更轻量、更快。 |
+| 🐧 **原生 chroot（Root 模式）** | 在 Root 模式下，使用内核原生的 `chroot`，无需 `proot` 二进制，更轻量、更快。 |
 | 📡 **自动下载 rootfs** | 应用自动下载最小化的 `ubuntu-base` 压缩包，并在设备端完成 gzip 解压（绕开盒子自带 `toybox tar` 的坑）。 |
 | 🔑 **零配置 SSH** | 自动安装并启动 `openssh-server`，随后在大屏展示 主机 / 用户 / 密码 / 端口。 |
 | 🎮 **TV 遥控器 UI** | 方向键（D-Pad）导航、焦点放大「光标」动画、大号高对比度按钮——专为遥控器而非触屏设计。 |
@@ -53,6 +53,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 | 🛡️ **稳健的 Shell 层** | `ShellExecutor` 自动探测 `su` 模式（交互式 vs `su -c`），流式实时进度，可承受大输出不卡死。 |
 | 🚀 **生产级 Web 栈** | 一条命令的 `bootstrap_server.sh` 在 `supervisor` 下拉起 **nginx + PHP-FPM + MariaDB + Redis**。 |
 | 🖥️ **命令控制台** | 主界面新增实时命令终端卡片，可直接在电视上查看 `cat /etc/os-release`、`df -h` 等输出，无需离开电视去开 SSH 客户端。 |
+| 🌱 **免 Root 的 Proot 模式** | 没有 Root？改用 `proot` 运行 Ubuntu——同样是真正的 Ubuntu 用户态，只是无法使用特权端口（<1024）和 systemd。适合被锁死或没 Root 的盒子。 |
 
 ---
 
@@ -86,12 +87,27 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 
 ---
 
+## 🔓 Proot 模式（无 Root）
+
+不想 Root 盒子也能跑？TVUbuntu 内置 **Proot 用户空间方案**：无需 `su`、不调用 `mount`/`chroot`，
+全部在应用沙盒内用 `libproot.so` 完成，适合无法 Root 或不想 Root 的设备。
+
+| 项目 | 说明 |
+| --- | --- |
+| SSH 服务 | **Dropbear**（OpenSSH 8.x 的特权分离子进程会触发本 proot 构建的 `openat(AT_EMPTY_PATH)` 断言崩溃，故改用对 proot 友好的 Dropbear；OpenSSH 仍保留以复用 sftp-server 与客户端工具） |
+| 默认端口 | `8022`（≥1024，无需 Root 绑定） |
+| 启动脚本 | `assets/start_proot.sh` → 解包 rootfs → `install_ssh_proot.sh` 装包 → `run_ubuntu_proot.sh` 拉起 dropbear 看门狗 |
+| 停止脚本 | `assets/stop_proot.sh`（不调用 `umount`，只杀 proot 进程树并释放端口） |
+| 限制 | 需透传宿主 `/proc` 供 `ps`/`htop` 使用（代价是容器内可读宿主进程 cmdline，proot 通病，无法经此杀宿主进程） |
+
+> 在「配置」里把**运行模式**设为 `Proot`，或在 `Auto` 模式下未 Root 时自动回退 Proot。
+
 ## 📂 目录结构
 
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.2.3
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.3.1
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器
@@ -207,6 +223,7 @@ gradle wrapper            # 如需要可重新生成 Gradle 包装
 | --- | --- |
 | Ubuntu 版本 | 22.04 / 24.04 / 26.04 |
 | CPU 架构 | auto / amd64 / arm64 / armhf（覆盖自动识别） |
+| 运行模式 | Root（chroot）/ Proot（免 Root） |
 | 启动/停止脚本路径 | 默认 `/data/local/ubuntu/start.sh` 与 `stop.sh` |
 | SSH 端口 / 用户名 / 密码 | 连接凭据 |
 | 开机自动启动 | 盒子开机直接进入 Ubuntu |
@@ -247,6 +264,46 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.3.1（版本号升级 + 低端口说明）
+- **版本号升级**：`1.2.3` → `1.3.1`（versionCode 5 → 8）。此前多个版本迭代未同步 versionCode，本次一并修正。
+- **Proot 模式低端口说明（888 端口 Permission denied）**：proot 模式**无 root 权限**，Android 系统默认限制非特权进程只能绑定 **1024 以上**端口（`net.ipv4.ip_unprivileged_port_start=1024`）。因此 nginx/宝塔等监听 `888`（<1024）时内核直接拒绝：`bind() to 0.0.0.0:888 failed (13: Permission denied)`——**这不是 App 禁用端口，是 Android 系统限制**（App 内置的 SSH 服务因此默认使用 8022）。解决：把 nginx 监听端口改为 ≥1024（如 `listen 8088`），或改用 root 模式运行。
+- **架构判断与安卓版本兼容**：架构自动探测基于 `getprop ro.product.cpu.abilist` + `uname -m`，覆盖 x86_64（含 MuMu 伪装 aarch64 的纠正）/ aarch64 / armv7 / armv8 全部主流情况；`minSdk 21`（Android 5.0）+ `targetSdk 34`（Android 14）覆盖主流安卓版本；三个 ABI（x86_64 / arm64-v8a / armeabi-v7a）的 `libproot.so` 均已打空路径补丁，模拟器与真机行为一致。
+
+### v1.2.8（修复 26.04 Proot 安装崩溃根因 —— 空路径断言）
+- **根因级修复（不再靠概率/绕行）**：26.04 proot 模式安装时 `systemd` postinst 与 OpenSSH 8.x 特权分离子进程会发出 `openat(dirfd, "", AT_EMPTY_PATH)` 空路径调用，而 proot 的 `path.c compare_paths2()` 在空路径容错分支**之前**有 `assert(length1>0)`/`assert(length2>0)`，直接 SIGABRT 整容器退出（`assertion "length2 > 0" failed`）。此前只能靠「先 root 模式装好再切 proot」或反复重试碰运气。
+- **修复方式**：已对三个架构（x86_64 / arm64-v8a / armeabi-v7a）的 `libproot.so` 打**二进制补丁**——把空路径检查跳转到 `PATHS_ARE_NOT_COMPARABLE` 返回路径（保留 `je`/`cbz` 条件语义，等长替换，不重编译、不破坏偏移）。与源码删 assert 的修复语义完全等价。
+- **兼容性**：22.04 / 24.04 / 26.04 全部受益；同时消除 OpenSSH 8.x 特权分离子进程的空路径崩溃隐患。
+- 说明：原始 .so 已备份至 `libproot_backup/`，可随时回滚；源码级补丁 `proot_empty_path_assert_fix.patch` 一并留存备查。
+
+### v1.2.7（支持 Ubuntu 26.04 Proot 模式）
+- **修复 26.04 安装失败（uutils coreutils 与 proot 不兼容）**：26.04 的 coreutils 换成 Rust 版 multi-call（`/usr/bin/coreutils`，各工具是指向它的 symlink，靠 argv[0] 分发子命令）。proot 用自定义 loader 加载程序时会把 argv[0] 改写成临时文件（`prooted-*`），uutils 认不出即报 `coreutils: unknown program 'prooted-*'`，导致 `mkdir`/`rm`/`ls` 等全部失效、apt 拉不到任何包。修复：首次安装（26.04）时自动从 Ubuntu 仓库下载 **GNU 独立版 coreutils**（`/usr/bin/gnu*`，不依赖 argv[0]）+ `libcap2`，bind 进 rootfs 后由安装脚本解包，并把 `/usr/bin` 下指向 uutils 的 symlink 全部替换为 `gnu*` 独立版（依赖核对：仅需 `libc` + `libselinux`，26.04 base 均已内置）。
+- 说明：22.04 / 24.04 的 coreutils 仍是传统多文件二进制，不受影响。
+
+### v1.2.6（界面文案与自启语义调整）
+- **主页顶部徽章**：`Proot 模式（无 Root）` → `Proot 模式`。
+- **服务状态文案**：去除所有 `（proot 模式）` 后缀（如 `Ubuntu 启动成功`、`Ubuntu 运行中`、`Ubuntu 未运行`），状态卡只保留纯状态文本。
+- **主机地址带端口**：SSH 信息卡主机地址显示 `IP:端口`（如 `172.16.2.31:8022`），root 模式为 `IP:22`。
+- **运行模式文案**：`强制 Root` → `Root 模式`；`强制 Proot（无 Root）` → `Proot 模式`。
+- **自启语义调整**：`开机自动启动 Ubuntu` → `软件启动时启动 Ubuntu`，开关改为紧贴文字右侧；逻辑同步改为「打开 App 时按开关决定是否自动启动」，**废弃系统开机广播自启**（BootReceiver/BootService 已从 Manifest 移除注册，不再监听开机广播，消除「未勾选却开机自启」的来源）。
+- **内置终端修复**：直连 proot 漏设 `PROOT_TMP_DIR` 导致 `can't canonicalize /tmp`、命令执行失败的问题，已与启动脚本临时目录保持一致。
+- **修复脚本换行符事故**：Windows 下 `git core.autocrlf=true` 会把 `assets/*.sh` 检出成 CRLF 行尾，Android 的 mksh 不识别 `\r`（报 `set: -:unknown option`，启动直接失败）。已将全部 6 个 shell 脚本强制转回 LF，并新增 `.gitattributes`（`*.sh text eol=lf`）防止再次被转换；若在 Windows 上手工编辑这些脚本，请将编辑器行尾设为 LF。
+
+### v1.2.5（修复重复启动与状态误判）
+- **修复「安装期间启动按钮复活」**：首次安装（约 2-3 分钟）期间，App 状态探测曾误判为「未运行」，`onResume` 刷新会把「启动」按钮重新点亮，导致用户再按一次或自动启动逻辑再次触发，出现日志里的 `已有启动实例...跳过重复启动`。现在状态机新增「安装/启动中」维度：安装期间按钮整体禁用、不再自动拉起第二条启动实例。
+- **防重入锁升级为原子锁**：`mkdir` 原子互斥（旧文件锁「先查后写」存在竞态，并发启动可能双双通过检查）；锁内记录 PID，校验其 cmdline 确为本脚本，防 PID 复用导致的误跳过；实例强杀/崩溃残留的锁会自动清理。
+- **跳过提示不再误导**：被拦截的重复实例改报「正在安装/启动中（已有实例进行中）」，不再误报「100% 已启动」。
+- **修正回归（X11 开关）**：Dropbear 2020.81 无 `-x` 选项，此前误加导致启动即退出；已移除并补充说明（详见上文 X11 提示更正）。
+
+### v1.2.4（Proot 模式稳定性修复）
+- **Proot 模式 SSH 探测/校验修复**：实际 SSH 服务是 **Dropbear**，旧逻辑误探测 `sshd` 进程与 `/usr/sbin/sshd` 二进制，在缺少 `ss`/`netstat` 的精简固件上会误报「SSH 未就绪 / 安装异常」。现已统一改为探测 dropbear。
+- **修复停止脚本**：兜底杀进程条件（`rootfs.*` 且 `run_ubuntu_proot.sh` 无进程可同时命中）改为按 rootfs 路径 + dropbear 精确清理，避免停止失效、端口/进程残留；并清理启动锁。
+- **修复并发自启**：开机广播（BootService）与打开 App（MainActivity）可能同时触发启动，新增启动锁 + 进程/端口三重防重入，避免重复解包、抢端口。
+- **消除登录告警**：动态补齐容器内 `/etc/group` 缺失的宿主补充组 gid，消除 `groups: cannot find name for group ID ...`。
+- **X11 转发提示说明（重要更正）**：`X11 forwarding request failed on channel 0` 是**客户端**主动请求了 X11 转发、被服务端拒绝产生的良性提示，与服务端无关。Dropbear 2020.81 **不支持 X11 转发，也无私有的启用/禁用开关**（其 `--help` 无任何 X11 选项），因此**无法也无法需要在服务端消除该提示**。早期曾误给 dropbear 加 `-x` 开关，结果该版本根本不认 `-x`，导致 dropbear 启动即退出、陷入重启死循环——已在 v1.2.4 修正回归。若想消除该提示，请在**客户端**用 `ssh -o ForwardX11=no` 连接，或关闭 ssh_config 里的 `ForwardX11`、连接时不要带 `-X`/`-Y`。
+- **加固命令执行**：修正 `ProotExecutor` 把整条命令误写进子进程 stdin 的脏代码；设置页密码增加字符集校验，启动命令对密码做单引号转义，杜绝特殊字符破坏参数/注入。
+- **修正 Manifest**：移除 `.MainActivity` 的 `HOME` 分类，避免被注册为桌面/主屏候选应用。
+- **文档与版本控制**：补充 Proot 模式说明；将 proot 脚本纳入 git 跟踪。
 
 ### v1.2.3
 - **新增命令控制台。** 主界面现在内置一个实时命令终端卡片，可直接在电视上滚动显示 shell 输出，例如 `cat /etc/os-release`、`df -h`，不用再去开 SSH 客户端。

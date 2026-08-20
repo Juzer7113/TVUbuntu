@@ -77,19 +77,38 @@ class MainActivity : AppCompatActivity() {
         binding.btnCopyLog.setOnClickListener { copyLog() }
     }
 
-    // 复制完整运行日志到剪贴板，便于快速把日志发给开发者排查
+    // 复制完整运行日志到剪贴板，并落盘到外部存储，便于直接分享 / adb 拉取
     private fun copyLog() {
         lifecycleScope.launch {
             val log = withContext(Dispatchers.IO) {
-                UbuntuService.readLog()
+                UbuntuRuntime.readLog(this@MainActivity)
             }
             if (log.isEmpty() || log == "(无日志内容)" || log == "(无日志文件)") {
                 Toast.makeText(this@MainActivity, getString(R.string.log_empty), Toast.LENGTH_SHORT).show()
                 return@launch
             }
+            // 1) 复制到剪贴板（整份日志，含 [proot-inner] 段，未截断）
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("ubuntu_log", log))
-            Toast.makeText(this@MainActivity, getString(R.string.log_copied), Toast.LENGTH_SHORT).show()
+            // 2) 同时落盘到外部存储（应用私有外部目录，无需授权），方便分享 / adb pull
+            val extDir = getExternalFilesDir(null)
+            var savedPath: String? = null
+            if (extDir != null) {
+                try {
+                    val f = java.io.File(extDir, "ubuntu_proot_log.txt")
+                    f.writeText(log)
+                    savedPath = f.absolutePath
+                } catch (_: Exception) {
+                    savedPath = null
+                }
+            }
+            // 3) 提示：剪贴板 + 文件路径（adb pull 该路径即可取到完整日志）
+            val msg = if (savedPath != null) {
+                getString(R.string.log_saved, savedPath)
+            } else {
+                getString(R.string.log_copied)
+            }
+            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -154,7 +173,7 @@ class MainActivity : AppCompatActivity() {
     private fun activateTerminal() {
         lifecycleScope.launch {
             val running = withContext(Dispatchers.IO) {
-                UbuntuService.isRunning(this@MainActivity)
+                UbuntuRuntime.isRunning(this@MainActivity)
             }
             if (!running) {
                 Toast.makeText(this@MainActivity, getString(R.string.command_not_running), Toast.LENGTH_LONG).show()
@@ -202,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         binding.etTerminal.append("\n")
         lifecycleScope.launch {
             val running = withContext(Dispatchers.IO) {
-                UbuntuService.isRunning(this@MainActivity)
+                UbuntuRuntime.isRunning(this@MainActivity)
             }
             if (!running) {
                 binding.etTerminal.append(getString(R.string.command_not_running))
@@ -212,22 +231,28 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.command_not_running), Toast.LENGTH_LONG).show()
                 return@launch
             }
-            val result = withContext(Dispatchers.IO) {
-                UbuntuService.runInUbuntu(this@MainActivity, cmd, timeoutMs = 120_000)
+            val (exitCode, output, error) = withContext(Dispatchers.IO) {
+                if (UbuntuRuntime.currentMode(this@MainActivity) == RuntimeMode.PROOT) {
+                    val r = ProotUbuntuService.runInUbuntu(this@MainActivity, cmd, timeoutMs = 120_000)
+                    Triple(r.exitCode, r.output, r.error)
+                } else {
+                    val r = UbuntuService.runInUbuntu(this@MainActivity, cmd, timeoutMs = 120_000)
+                    Triple(r.exitCode, r.output, r.error)
+                }
             }
             val out = buildString {
-                if (result.output.isNotBlank()) append(result.output)
-                if (result.error.isNotBlank()) {
+                if (output.isNotBlank()) append(output)
+                if (error.isNotBlank()) {
                     if (length > 0) append("\n")
-                    append(result.error)
+                    append(error)
                 }
             }
             if (out.isNotBlank()) {
                 binding.etTerminal.append(out)
                 binding.etTerminal.append("\n")
             }
-            if (result.exitCode != 0) {
-                binding.etTerminal.append("[exit ${result.exitCode}]")
+            if (exitCode != 0) {
+                binding.etTerminal.append("[exit $exitCode]")
                 binding.etTerminal.append("\n")
             }
             binding.etTerminal.append(prompt)
@@ -277,7 +302,7 @@ class MainActivity : AppCompatActivity() {
         updateStatus(UbuntuService.Status.STARTING, getString(R.string.status_installing), "")
         lifecycleScope.launch {
             val state = withContext(Dispatchers.IO) {
-                UbuntuService.startUbuntu(this@MainActivity) { pct, msg ->
+                UbuntuRuntime.start(this@MainActivity) { pct, msg ->
                     runOnUiThread {
                         binding.pbInstall.progress = pct
                         binding.tvProgress.text = msg
@@ -297,7 +322,7 @@ class MainActivity : AppCompatActivity() {
         updateStatus(UbuntuService.Status.STOPPING, getString(R.string.status_stopping), "")
         lifecycleScope.launch {
             val state = withContext(Dispatchers.IO) {
-                UbuntuService.stopUbuntu(this@MainActivity)
+                UbuntuRuntime.stop(this@MainActivity)
             }
             updateUI(state)
             if (state.status == UbuntuService.Status.ERROR) {
@@ -308,23 +333,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkRootAndStatus() {
         lifecycleScope.launch {
+            val mode = withContext(Dispatchers.IO) {
+                UbuntuRuntime.currentMode(this@MainActivity)
+            }
             val hasRoot = withContext(Dispatchers.IO) {
                 ShellExecutor.checkRootAccess()
             }
-            if (hasRoot) {
-                binding.tvRootStatus.text = getString(R.string.root_granted)
-                binding.tvRootStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_running))
-            } else {
-                binding.tvRootStatus.text = getString(R.string.root_denied)
-                binding.tvRootStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_error))
+
+            // 根据当前生效模式显示 Root/Proot 状态
+            when (mode) {
+                RuntimeMode.PROOT -> {
+                    binding.tvRootStatus.text = "Proot 模式"
+                    binding.tvRootStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_running))
+                }
+                else -> if (hasRoot) {
+                    binding.tvRootStatus.text = getString(R.string.root_granted)
+                    binding.tvRootStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_running))
+                } else {
+                    binding.tvRootStatus.text = getString(R.string.root_denied)
+                    binding.tvRootStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_error))
+                }
             }
 
             val state = withContext(Dispatchers.IO) {
-                UbuntuService.detectStatus(this@MainActivity)
+                UbuntuRuntime.detectStatus(this@MainActivity)
             }
             updateUI(state)
-            // 勾选「开机自动启动」且已 Root 且当前未运行时，打开 App 自动拉起服务
-            if (hasRoot && UbuntuService.getAutoStart(this@MainActivity) &&
+            // 勾选「软件启动时启动」且当前未运行时，打开 App 自动按生效模式拉起服务
+            if (UbuntuService.getAutoStart(this@MainActivity) &&
                 state.status == UbuntuService.Status.STOPPED
             ) {
                 triggerStart()
@@ -335,20 +371,26 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         lifecycleScope.launch {
             val state = withContext(Dispatchers.IO) {
-                UbuntuService.detectStatus(this@MainActivity)
+                UbuntuRuntime.detectStatus(this@MainActivity)
             }
             updateUI(state)
         }
     }
 
     private fun updateUI(state: UbuntuService.ServiceState) {
-        binding.tvUbuntuVersion.text = UbuntuService.getUbuntuVersion(this)
+        val modeLabel = when (UbuntuRuntime.currentMode(this)) {
+            RuntimeMode.PROOT -> "Proot"
+            RuntimeMode.ROOT -> "Root"
+            else -> "Auto"
+        }
+        binding.tvUbuntuVersion.text = "${UbuntuService.getUbuntuVersion(this)} · $modeLabel 模式"
         updateStatus(state.status, state.message, "")
         updateSSHInfo(state.sshInfo)
-        applyButtonState(state.status == UbuntuService.Status.RUNNING)
+        applyButtonState(state)
     }
 
     private fun updateStatus(status: UbuntuService.Status, text: String, detail: String) {
+        // 主页只显示状态标题；完整日志统一由「复制日志」按钮一键复制，不堆在主页
         binding.tvStatus.text = text
         binding.tvStatusDetail.text = detail
 
@@ -381,20 +423,27 @@ class MainActivity : AppCompatActivity() {
             binding.tvSSHStatus.setTextColor(ContextCompat.getColor(this, R.color.status_starting))
         }
 
-        binding.tvSSHHost.text = sshInfo.host
+        binding.tvSSHHost.text = "${sshInfo.host}:${sshInfo.port}"
         binding.tvSSHUser.text = sshInfo.username
         binding.tvSSHPassword.text = sshInfo.password
     }
 
-    // 运行中：启动按钮禁用、停止按钮可用；停止时反之。禁用按钮同时不可聚焦，遥控自动跳过。
-    private fun applyButtonState(running: Boolean) {
-        binding.btnStart.isEnabled = !running
+    // 按钮可用性：
+    //   RUNNING    → 启动禁用、停止可用
+    //   STARTING / STOPPING → 两个都禁用（安装/启动中禁止重复按「启动」，避免再拉一份 start_proot.sh）
+    //   其余(STOPPED/ERROR) → 启动可用、停止禁用
+    // 禁用按钮同时不可聚焦，遥控自动跳过。
+    private fun applyButtonState(state: UbuntuService.ServiceState) {
+        val running = state.status == UbuntuService.Status.RUNNING
+        val busy = state.status == UbuntuService.Status.STARTING ||
+            state.status == UbuntuService.Status.STOPPING
+        binding.btnStart.isEnabled = !running && !busy
         binding.btnStop.isEnabled = running
-        binding.btnStart.isFocusable = !running
+        binding.btnStart.isFocusable = !running && !busy
         binding.btnStop.isFocusable = running
         // 若焦点正落在刚被禁用的按钮上，自动转移到可用按钮，避免焦点丢失
         if (currentFocus === binding.btnStart && !binding.btnStart.isFocusable) {
-            binding.btnStop.requestFocus()
+            (if (binding.btnStop.isFocusable) binding.btnStop else null)?.requestFocus()
         } else if (currentFocus === binding.btnStop && !binding.btnStop.isFocusable) {
             binding.btnStart.requestFocus()
         }

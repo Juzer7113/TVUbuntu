@@ -20,6 +20,65 @@
             android:textStyle="bold"
             android:layout_marginBottom="32dp" />
 
+        <!-- Runtime Mode -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_runtime_mode"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <RadioGroup
+            android:id="@+id/rgRuntimeMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="16dp"
+            android:layout_marginBottom="24dp">
+
+            <RadioButton
+                android:id="@+id/rbModeAuto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/runtime_mode_auto"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+            <RadioButton
+                android:id="@+id/rbModeRoot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/runtime_mode_root"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+            <RadioButton
+                android:id="@+id/rbModeProot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/runtime_mode_proot"
+                android:textColor="@color/text_radio"
+                android:textSize="16sp"
+                android:buttonTint="@color/radio_button_tint"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+        </RadioGroup>
+
         <!-- Ubuntu Version -->
         <TextView
             android:layout_width="wrap_content"
@@ -173,9 +232,8 @@
             android:layout_marginBottom="24dp">
 
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:text="@string/setting_auto_start"
                 android:textColor="@color/text_primary"
                 android:textSize="16sp" />
@@ -184,6 +242,7 @@
                 android:id="@+id/swAutoStart"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
                 android:background="@drawable/bg_option"
                 android:padding="8dp"
                 android:focusable="true"
@@ -268,6 +327,32 @@
             android:layout_marginBottom="20dp"
             android:importantForAutofill="no"
             android:nextFocusUp="@id/etStopScript"
+            android:nextFocusDown="@id/etSshUser" />
+
+        <!-- Proot SSH Port -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_proot_ssh_port"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etProotSshPort"
+            android:layout_width="200dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="number"
+            android:singleLine="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:layout_marginBottom="20dp"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etSshPort"
             android:nextFocusDown="@id/etSshUser" />
 
         <!-- SSH Username -->

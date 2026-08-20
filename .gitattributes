@@ -1,0 +1,4 @@
+# 强制 shell 脚本始终使用 LF 行尾。
+# Windows 下 git core.autocrlf=true 会把工作区文件 checkout 成 CRLF，
+# 而 Android 的 mksh 不识别 \r，会把 `set +e\r` 解析成非法参数导致启动失败。
+*.sh text eol=lf

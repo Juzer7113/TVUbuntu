@@ -20,6 +20,7 @@
     <string name="btn_copy_log">复制日志</string>
     <string name="btn_copy_log_short">日志</string>
     <string name="log_copied">日志已复制到剪贴板</string>
+    <string name="log_saved">日志已复制到剪贴板并保存到：%s（可用 adb pull 该路径取完整日志）</string>
     <string name="log_empty">日志为空</string>
 
     <string name="ssh_service">SSH 服务</string>
@@ -41,10 +42,15 @@
     <string name="setting_stop_script">Ubuntu 停止脚本路径</string>
     <string name="setting_ubuntu_version">Ubuntu 版本</string>
     <string name="setting_arch">CPU 架构</string>
-    <string name="setting_ssh_port">SSH 端口</string>
+    <string name="setting_runtime_mode">运行模式</string>
+    <string name="runtime_mode_auto">自动（优先 Root）</string>
+    <string name="runtime_mode_root">Root 模式</string>
+    <string name="runtime_mode_proot">Proot 模式</string>
+    <string name="setting_proot_ssh_port">Proot SSH 端口（>=1024）</string>
+    <string name="setting_ssh_port">Root 模式 SSH 端口</string>
     <string name="setting_ssh_user">SSH 用户名</string>
     <string name="setting_ssh_password">SSH 密码</string>
-    <string name="setting_auto_start">开机自动启动 Ubuntu</string>
+    <string name="setting_auto_start">软件启动时启动 Ubuntu</string>
 
     <string name="boot_service_title">Ubuntu 控制器</string>
     <string name="boot_service_starting">正在后台启动 Ubuntu…</string>
