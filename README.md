@@ -13,7 +13,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -60,6 +60,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 | 🌱 **No-root Proot mode** | No root? Run Ubuntu via `proot` instead — the same real Ubuntu userland, just without privileged ports (<1024) and systemd. Perfect for locked-down or unrooted boxes. |
 | 📡 **Automatic ADB acquisition** | On app launch and on boot, silently obtains ADB access (wireless TLS pairing on Android 11+, classic TCP 5555 with an accessibility auto-click fallback) — the Proot-over-ADB path works with zero manual setup, no root required. |
 | 🔧 **Proot on locked-down devices** | If the App's own process domain is blocked from executing proot (SELinux `EACCES`), it auto-falls back to launching proot through the device's `adbd` over the ADB protocol — runs on many more firmwares. |
+| 🔌 **Custom ADB host & port** | Set your own ADB address/port. A toggle switches `adbd` to that endpoint `setprop service.adb.tcp.port` + `persist` + `ctl.restart adbd` on every app launch **and** boot, so your PC can always `adb connect` without re-enabling USB debugging. |
 
 ---
 
@@ -98,7 +99,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.5.1
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.5.2
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver + ADB accessibility service
@@ -223,6 +224,8 @@ Open **Settings** on the main screen:
 | CPU architecture | auto / amd64 / arm64 / armhf (override auto-detection) |
 | Runtime mode | Root (chroot) / Proot (no-root) |
 | Start/Stop script path | default `/data/local/ubuntu/start.sh` & `stop.sh` |
+| ADB host / port | the address & port the App uses for ADB (default `127.0.0.1:5555`) |
+| Network ADB auto-start | toggle — on app launch & boot, switch `adbd` to the configured host:port |
 | SSH port / user / password | connection credentials |
 | Auto-start on boot | boot the box straight into Ubuntu |
 
@@ -262,6 +265,9 @@ mysql -u root                   # MariaDB (unix_socket auth)
 ---
 
 ## 📝 Changelog
+
+### v1.5.2
+- **Custom ADB host & port + persistent network ADB toggle.** The ADB host/port fields in Settings are now actually used: the old one-shot "Network ADB self-heal" button is replaced by a persistent **toggle**. When enabled, the App switches `adbd` to your configured host:port via `setprop service.adb.tcp.port <port>` + `setprop persist.adb.tcp.port <port>` + `ctl.restart adbd` on **every app launch and on boot** (in `MainActivity` and `AdbBootReceiver`), so your PC can always `adb connect <host>:<port>` without re-enabling USB debugging. The port is no longer hardcoded to 5555 — `AdbNetworkEnabler.enableViaRoot/enableViaAdb` now read the configured values, with `enable()` as a one-call Root-then-ADB helper.
 
 ### v1.5.1
 - **Broader device compatibility for Proot — automatic ADB fallback path.** On locked-down firmwares where TVUbuntu's own process domain is blocked from executing proot (SELinux `EACCES` on `app_data_file`), the App now auto-detects the failure and falls back to launching proot through the device's own `adbd` (shell domain) over the ADB protocol. proot binaries/rootfs land in `/data/local/tmp/ubuntu/` (shell-writable/executable), so many more boxes that previously failed outright can now run Ubuntu.

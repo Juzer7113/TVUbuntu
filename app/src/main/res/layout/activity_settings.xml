@@ -40,9 +40,9 @@
             android:textSize="16sp"
             android:focusable="true"
             android:focusableInTouchMode="true"
-            android:nextFocusDown="@id/btnEnableNetAdb" />
+            android:nextFocusDown="@id/swEnableNetAdb" />
 
-        <!-- 网络 ADB 自愈 -->
+        <!-- 网络 ADB 开关：按配置地址端口自持开启 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -51,19 +51,32 @@
             android:textSize="14sp"
             android:layout_marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/btnEnableNetAdb"
-            android:layout_width="wrap_content"
-            android:layout_height="52dp"
-            android:layout_marginBottom="12dp"
-            android:background="@drawable/btn_secondary"
-            android:text="@string/adb_net_adb_btn"
-            android:textColor="@color/text_btn_secondary"
-            android:textSize="16sp"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:nextFocusUp="@id/btnAdbAutoClick"
-            android:nextFocusDown="@id/etAdbHost" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/adb_net_adb_switch"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp" />
+
+            <Switch
+                android:id="@+id/swEnableNetAdb"
+                android:layout_width="wrap_content"
+                android:layout_height="52dp"
+                android:layout_marginStart="16dp"
+                android:background="@drawable/bg_option"
+                android:padding="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/btnAdbAutoClick"
+                android:nextFocusDown="@id/etAdbHost" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
@@ -87,7 +100,7 @@
             android:focusableInTouchMode="true"
             android:layout_marginBottom="20dp"
             android:importantForAutofill="no"
-            android:nextFocusUp="@id/btnEnableNetAdb"
+            android:nextFocusUp="@id/swEnableNetAdb"
             android:nextFocusDown="@id/etAdbPort" />
 
         <TextView

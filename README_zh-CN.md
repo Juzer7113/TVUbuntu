@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -56,6 +56,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 | 🌱 **免 Root 的 Proot 模式** | 没有 Root？改用 `proot` 运行 Ubuntu——同样是真正的 Ubuntu 用户态，只是无法使用特权端口（<1024）和 systemd。适合被锁死或没 Root 的盒子。 |
 | 📡 **ADB 自动获取** | 启动应用与开机时静默获取 ADB 权限（Android 11+ 走免弹窗无线 TLS 配对，经典 5555 通道由无障碍自动点击兜底）——「经 ADB 跑 Proot」零配置即可用，无需 Root。 |
 | 🔧 **收紧固件也能跑 Proot** | 当 App 自身进程域被 SELinux 禁止直 exec proot（`EACCES`）时，自动改走「经设备 adbd 以 ADB 协议拉起 proot」的回退路径，兼容更多固件。 |
+| 🔌 **自定义 ADB 地址与端口** | 设置页可指定 ADB 主机与端口；开启后，App 会在每次启动应用与开机时，用 `setprop service.adb.tcp.port` + `persist` + `ctl.restart adbd` 把 adbd 切到该地址:端口，电脑随时 `adb connect` 无需反复开「USB 调试」。 |
 
 ---
 
@@ -109,7 +110,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.5.1
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.5.2
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器 + ADB 无障碍服务
@@ -238,6 +239,8 @@ gradle wrapper            # 如需要可重新生成 Gradle 包装
 | CPU 架构 | auto / amd64 / arm64 / armhf（覆盖自动识别） |
 | 运行模式 | Root（chroot）/ Proot（免 Root） |
 | 启动/停止脚本路径 | 默认 `/data/local/ubuntu/start.sh` 与 `stop.sh` |
+| ADB 主机 / 端口 | App 用于 ADB 的地址与端口（默认 `127.0.0.1:5555`） |
+| 网络 ADB 自动开启 | 开关——启动应用与开机时，把 adbd 切到配置的地址:端口 |
 | SSH 端口 / 用户名 / 密码 | 连接凭据 |
 | 开机自动启动 | 盒子开机直接进入 Ubuntu |
 
@@ -277,6 +280,9 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.5.2（自定义 ADB 地址端口 + 网络 ADB 持久开关）
+- **自定义 ADB 主机/端口 + 网络 ADB 持久开关。** 设置页原本就有的 ADB 主机/端口输入框现在真正生效：原来的「网络 ADB 自愈」一次性按钮改为**持久开关**。开启后，App 会在**每次启动应用与开机**（`MainActivity` 与 `AdbBootReceiver`）时用 `setprop service.adb.tcp.port <端口>` + `setprop persist.adb.tcp.port <端口>` + `ctl.restart adbd` 把 adbd 切到你配置的地址:端口，电脑随时 `adb connect <主机>:<端口>` 无需再开 USB 调试。端口不再写死 5555——`AdbNetworkEnabler.enableViaRoot/enableViaAdb` 现读取配置值，`enable()` 作为「先 Root 后 ADB」的一键封装。
 
 ### v1.5.1（ADB 获取 + 兼容更多设备的 Proot）
 

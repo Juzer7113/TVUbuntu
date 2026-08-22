@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ubuntucontroller.AdbAutoAcquire
+import com.ubuntucontroller.AdbNetworkEnabler
 import com.ubuntucontroller.AdbWirelessPairing
 import com.ubuntucontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
@@ -383,6 +384,13 @@ class MainActivity : AppCompatActivity() {
                     onProgress = { msg -> binding.tvAdbStatus.text = msg },
                     onDone = { res -> onAdbAutoAcquireDone(res) }
                 )
+            }
+
+            // 网络 ADB 开关：开启后按配置地址端口自持（开软件即把 adbd 切到该端口）
+            if (AdbNetworkEnabler.isEnabled(this@MainActivity)) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    AdbNetworkEnabler.enable(this@MainActivity)
+                }
             }
 
             // 勾选「软件启动时启动」且当前未运行时，打开 App 自动按生效模式拉起服务

@@ -105,8 +105,7 @@
     <string name="adb_wireless_ready">ADB：无线 TLS 已连接（免弹窗配对）</string>
     <string name="adb_manual_failed_hint">ADB 仍未连接：请在「开发者选项」开启「网络 ADB 调试」，或前往设置开启「ADB 授权自动点击」</string>
 
-    <!-- ADB 网络自愈（默认开启自动获取，此处仅暴露自愈入口） -->
-    <string name="adb_net_adb_section">网络 ADB 自愈</string>
-    <string name="adb_net_adb_btn">开启网络 ADB（5555）</string>
-    <string name="adb_net_adb_hint">在已获特权（Root / 已授权 adb）时把 adbd 切到 TCP 5555 并持久化，之后可自动直连</string>
+    <!-- 网络 ADB 开关：按配置地址端口自持开启 -->
+    <string name="adb_net_adb_section">网络 ADB（按配置地址端口自动开启）</string>
+    <string name="adb_net_adb_switch">开软件/开机自动开启网络 ADB</string>
 </resources>

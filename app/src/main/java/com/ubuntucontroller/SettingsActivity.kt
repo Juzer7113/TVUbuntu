@@ -28,7 +28,12 @@ class SettingsActivity : AppCompatActivity() {
         setupButtons()
         setupTvFocus()
         binding.btnAdbAutoClick.setOnClickListener { openAdbAutoClick() }
-        binding.btnEnableNetAdb.setOnClickListener { enableNetAdb() }
+        // 网络 ADB 开关：开启后按配置地址端口自持；切换即按当前配置立即开启一次
+        binding.swEnableNetAdb.isChecked = AdbNetworkEnabler.isEnabled(this)
+        binding.swEnableNetAdb.setOnCheckedChangeListener { _, isOn ->
+            AdbNetworkEnabler.setEnabled(this, isOn)
+            if (isOn) enableNetAdb()
+        }
         // 初始按当前无障碍服务状态显示按钮文案
         binding.btnAdbAutoClick.setText(
             if (AdbAccessibilityHelper.isEnabled(this)) R.string.adb_auto_click_btn_on
@@ -77,7 +82,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnCancel.applyTvButtonFocus()
         binding.btnSave.applyTvButtonFocus()
         binding.btnAdbAutoClick.applyTvButtonFocus()
-        binding.btnEnableNetAdb.applyTvButtonFocus()
+        binding.swEnableNetAdb.applyTvFocus(1.05f)
     }
 
     private fun loadSettings() {
@@ -251,14 +256,18 @@ class SettingsActivity : AppCompatActivity() {
      * 之后开软件/开机可自动直连，免去每次手动开「网络 ADB 调试」。
      */
     private fun enableNetAdb() {
+        val host = binding.etAdbHost.text.toString().trim()
+            .ifBlank { UbuntuService.getAdbHost(this) }
+        val port = binding.etAdbPort.text.toString().toIntOrNull()
+            ?: UbuntuService.getAdbPort(this)
         Thread {
-            val ok = AdbNetworkEnabler.enableViaRoot(this) ||
-                AdbNetworkEnabler.enableViaAdb(this)
+            val ok = AdbNetworkEnabler.enableViaRoot(this, port) ||
+                AdbNetworkEnabler.enableViaAdb(this, host, port)
             runOnUiThread {
                 Toast.makeText(
                     this,
-                    if (ok) "已尝试开启网络 ADB（5555），请等待数秒后自动连接"
-                    else "开启失败：需要 Root 或已授权 adb 通道",
+                    if (ok) "已按 $host:$port 开启网络 ADB，开软件/开机将自动开启"
+                    else "开启失败：需要 Root 或已授权 adb（地址 $host:$port）",
                     Toast.LENGTH_LONG
                 ).show()
             }

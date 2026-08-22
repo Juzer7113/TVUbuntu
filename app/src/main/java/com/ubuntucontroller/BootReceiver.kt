@@ -3,6 +3,7 @@ package com.ubuntucontroller
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.ubuntucontroller.AdbNetworkEnabler
 
 /**
  * 开机自动获取 ADB（与「软件启动时启动 Ubuntu」解耦）：仅负责在 BOOT_COMPLETED 后后台尝试
@@ -20,6 +21,10 @@ class AdbBootReceiver : BroadcastReceiver() {
                 val hasRoot = ShellExecutor.checkRootAccess()
                 if (!hasRoot && AdbAutoAcquire.isEnabled(context)) {
                     AdbAutoAcquire.acquire(context, {}, {})
+                }
+                // 网络 ADB 开关：开启后按配置地址端口自持（开机即把 adbd 切到该端口）
+                if (AdbNetworkEnabler.isEnabled(context)) {
+                    AdbNetworkEnabler.enable(context)
                 }
             }
         }.start()
