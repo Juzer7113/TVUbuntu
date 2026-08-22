@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 最佳努力：用于以 WRITE_SECURE_SETTINGS 直接开启无障碍服务（需系统签名/adb pm grant；普通签名被忽略，退化到跳转设置页） -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- 开机自动获取 ADB（接收 BOOT_COMPLETED 广播，后台尝试授权，不启动 Ubuntu） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature
         android:name="android.software.leanback"
@@ -46,8 +50,29 @@
             android:windowSoftInputMode="stateHidden"
             android:theme="@style/Theme.UbuntuController" />
 
-        <!-- v1.2.6：自启语义改为「软件启动时启动」——由 MainActivity 打开时按开关决定，
-             不再监听系统开机广播（BootReceiver/BootService 已废弃，不再注册）。 -->
+        <!-- 双通道补齐：ADB 授权弹窗自动点击（无障碍）。覆盖 Android<11 / 经典网络 ADB 的「允许 USB 调试」弹窗 -->
+        <service
+            android:name=".AdbAuthAutoClickService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/adb_auth_accessibility" />
+        </service>
+
+        <!-- v1.4：开机自动获取 ADB（与「软件启动时启动 Ubuntu」解耦，只拿授权不启动系统）。
+             仅无 root 且「ADB 自动获取」开关开启时触发。 -->
+        <receiver
+            android:name=".AdbBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/bg_primary"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- 标题：与配置页同款风格（text_primary / 粗体 / 20sp） -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_title"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_host"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etPairHost"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="text"
+            android:singleLine="true"
+            android:importantForAutofill="no"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@id/btnPairCancel"
+            android:nextFocusDown="@id/etPairPort" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_port"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etPairPort"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="number"
+            android:singleLine="true"
+            android:importantForAutofill="no"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@id/etPairHost"
+            android:nextFocusDown="@id/etPairCode" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_code"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etPairCode"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:letterSpacing="0.3"
+            android:inputType="number"
+            android:maxLength="6"
+            android:paddingHorizontal="16dp"
+            android:singleLine="true"
+            android:importantForAutofill="no"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@id/etPairPort"
+            android:nextFocusDown="@id/btnPairDiscover" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnPairDiscover"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/btn_secondary"
+                android:text="@string/pair_discover"
+                android:textColor="@color/text_btn_secondary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusRight="@id/btnPairConnect"
+                android:nextFocusUp="@id/etPairCode"
+                android:nextFocusDown="@id/btnPairCancel" />
+
+            <Button
+                android:id="@+id/btnPairConnect"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/btn_start"
+                android:text="@string/pair_connect"
+                android:textColor="@color/text_btn_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnPairDiscover"
+                android:nextFocusUp="@id/btnPairDiscover"
+                android:nextFocusDown="@id/btnPairCancel" />
+        </LinearLayout>
+
+        <!-- 自有取消按钮：纳入 D-pad 焦点环，替代 AlertDialog 自带按钮（其不在自定义焦点链内，遥控器无法聚焦） -->
+        <Button
+            android:id="@+id/btnPairCancel"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/btn_secondary"
+            android:text="@string/btn_cancel"
+            android:textColor="@color/text_btn_secondary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@id/btnPairConnect"
+            android:nextFocusDown="@id/etPairHost" />
+
+        <TextView
+            android:id="@+id/tvPairStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/pair_status"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</ScrollView>

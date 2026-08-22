@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADB 就绪：绿色（与启动按钮同款形状/焦点边框），按下略深 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/btn_disabled_bg" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/btn_start_pressed" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/btn_start_bg" />
+            <corners android:radius="12dp" />
+            <stroke android:width="3dp" android:color="@color/focus_border" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/btn_start_bg" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</selector>

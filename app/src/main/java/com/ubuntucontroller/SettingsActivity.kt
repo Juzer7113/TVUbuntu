@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.ubuntucontroller.AdbNetworkEnabler
 import com.ubuntucontroller.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
@@ -26,8 +27,15 @@ class SettingsActivity : AppCompatActivity() {
         loadSettings()
         setupButtons()
         setupTvFocus()
-        // TV: 初始焦点放在运行模式第一个选项上
-        binding.rbModeAuto.requestFocus()
+        binding.btnAdbAutoClick.setOnClickListener { openAdbAutoClick() }
+        binding.btnEnableNetAdb.setOnClickListener { enableNetAdb() }
+        // 初始按当前无障碍服务状态显示按钮文案
+        binding.btnAdbAutoClick.setText(
+            if (AdbAccessibilityHelper.isEnabled(this)) R.string.adb_auto_click_btn_on
+            else R.string.adb_auto_click_btn_off
+        )
+        // TV: 初始焦点放在「开启 ADB 授权自动点击」按钮上
+        binding.btnAdbAutoClick.requestFocus()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
@@ -58,6 +66,8 @@ class SettingsActivity : AppCompatActivity() {
         binding.rbArchArm64.applyTvFocus(1.05f)
         binding.rbArchArmhf.applyTvFocus(1.05f)
         binding.swAutoStart.applyTvFocus(1.05f)
+        binding.etAdbHost.applyTvFocus(1f)
+        binding.etAdbPort.applyTvFocus(1f)
         binding.etStartScript.applyTvFocus(1f)
         binding.etStopScript.applyTvFocus(1f)
         binding.etSshPort.applyTvFocus(1f)
@@ -66,6 +76,8 @@ class SettingsActivity : AppCompatActivity() {
         binding.etSshPassword.applyTvFocus(1f)
         binding.btnCancel.applyTvButtonFocus()
         binding.btnSave.applyTvButtonFocus()
+        binding.btnAdbAutoClick.applyTvButtonFocus()
+        binding.btnEnableNetAdb.applyTvButtonFocus()
     }
 
     private fun loadSettings() {
@@ -73,6 +85,8 @@ class SettingsActivity : AppCompatActivity() {
         binding.etStopScript.setText(UbuntuService.getStopScriptPath(this))
         binding.etSshPort.setText(UbuntuService.getSshPort(this).toString())
         binding.etProotSshPort.setText(UbuntuService.getProotSshPort(this).toString())
+        binding.etAdbHost.setText(UbuntuService.getAdbHost(this))
+        binding.etAdbPort.setText(UbuntuService.getAdbPort(this).toString())
         binding.etSshUser.setText(UbuntuService.getSshUser(this))
         binding.etSshPassword.setText(UbuntuService.getSshPassword(this))
         binding.swAutoStart.isChecked = UbuntuService.getAutoStart(this)
@@ -128,6 +142,8 @@ class SettingsActivity : AppCompatActivity() {
             val stopScript = binding.etStopScript.text.toString().trim()
             val portText = binding.etSshPort.text.toString().trim()
             val prootPortText = binding.etProotSshPort.text.toString().trim()
+            val adbHost = binding.etAdbHost.text.toString().trim()
+            val adbPortText = binding.etAdbPort.text.toString().trim()
             val user = binding.etSshUser.text.toString().trim()
             val password = binding.etSshPassword.text.toString().trim()
             val autoStart = binding.swAutoStart.isChecked
@@ -147,6 +163,17 @@ class SettingsActivity : AppCompatActivity() {
             val prootPort = prootPortText.toIntOrNull()
             if (prootPort == null || prootPort < 1024 || prootPort > 65535) {
                 Toast.makeText(this, "Proot 模式端口必须 >=1024 且 <=65535", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (adbHost.isEmpty()) {
+                Toast.makeText(this, getString(R.string.adb_invalid_host), Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val adbPort = adbPortText.toIntOrNull()
+            if (adbPort == null || adbPort < 1 || adbPort > 65535) {
+                Toast.makeText(this, getString(R.string.adb_invalid_port), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -181,6 +208,8 @@ class SettingsActivity : AppCompatActivity() {
             UbuntuService.setStopScriptPath(this, stopScript)
             UbuntuService.setSshPort(this, port)
             UbuntuService.setProotSshPort(this, prootPort)
+            UbuntuService.setAdbHost(this, adbHost)
+            UbuntuService.setAdbPort(this, adbPort)
             UbuntuService.setSshUser(this, user)
             UbuntuService.setUbuntuVersion(this, version)
             UbuntuService.setArchOverride(this, arch)
@@ -195,4 +224,45 @@ class SettingsActivity : AppCompatActivity() {
             finish()
         }
     }
+
+    /**
+     * 开启/跳转「ADB 授权自动点击」无障碍服务。
+     * 优先尝试以 WRITE_SECURE_SETTINGS 直接开启（系统签名 / adb pm grant 时有效）；
+     * 失败则跳转系统无障碍设置页，由用户手动开启本 App 的无障碍服务。
+     */
+    private fun openAdbAutoClick() {
+        if (AdbAccessibilityHelper.isEnabled(this)) {
+            Toast.makeText(this, R.string.adb_auto_click_btn_on, Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, R.string.adb_auto_click_opening, Toast.LENGTH_SHORT).show()
+        val ok = AdbAccessibilityHelper.tryEnable(this)
+        if (ok) {
+            binding.btnAdbAutoClick.setText(R.string.adb_auto_click_btn_on)
+            Toast.makeText(this, R.string.adb_auto_click_btn_on, Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, R.string.adb_auto_click_open_settings, Toast.LENGTH_LONG).show()
+            AdbAccessibilityHelper.openSettings(this)
+        }
+    }
+
+    /**
+     * 网络 ADB 自愈：在已获特权（Root / 已授权 adb）时把 adbd 切到 TCP 5555 并持久化，
+     * 之后开软件/开机可自动直连，免去每次手动开「网络 ADB 调试」。
+     */
+    private fun enableNetAdb() {
+        Thread {
+            val ok = AdbNetworkEnabler.enableViaRoot(this) ||
+                AdbNetworkEnabler.enableViaAdb(this)
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    if (ok) "已尝试开启网络 ADB（5555），请等待数秒后自动连接"
+                    else "开启失败：需要 Root 或已授权 adb 通道",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.start()
+    }
+
 }

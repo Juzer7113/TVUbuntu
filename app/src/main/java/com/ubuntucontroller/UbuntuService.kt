@@ -60,6 +60,8 @@ object UbuntuService {
     private const val KEY_ARCH_OVERRIDE = "arch_override"
     private const val KEY_RUNTIME_MODE = "runtime_mode"
     private const val KEY_PROOT_SSH_PORT = "proot_ssh_port"
+    private const val KEY_ADB_HOST = "adb_host"
+    private const val KEY_ADB_PORT = "adb_port"
 
     private const val UBUNTU_DIR = "/data/local/ubuntu"
     // tar 文件名按「版本+架构」命名，避免切换版本后误用旧文件
@@ -176,6 +178,23 @@ object UbuntuService {
 
     fun setProotSshPort(context: Context, port: Int) {
         plainPrefs(context).edit().putInt(KEY_PROOT_SSH_PORT, port.coerceAtLeast(1024)).apply()
+    }
+
+    // adb 路径连接参数（仅 proot 直 exec 被 SELinux 拒绝时启用）
+    fun getAdbHost(context: Context): String {
+        return plainPrefs(context).getString(KEY_ADB_HOST, "127.0.0.1") ?: "127.0.0.1"
+    }
+
+    fun setAdbHost(context: Context, host: String) {
+        plainPrefs(context).edit().putString(KEY_ADB_HOST, host.ifBlank { "127.0.0.1" }).apply()
+    }
+
+    fun getAdbPort(context: Context): Int {
+        return plainPrefs(context).getInt(KEY_ADB_PORT, 5555)
+    }
+
+    fun setAdbPort(context: Context, port: Int) {
+        plainPrefs(context).edit().putInt(KEY_ADB_PORT, port.coerceAtLeast(1)).apply()
     }
 
     fun getUbuntuVersion(context: Context): String {

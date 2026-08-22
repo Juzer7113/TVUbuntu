@@ -20,6 +20,103 @@
             android:textStyle="bold"
             android:layout_marginBottom="32dp" />
 
+        <!-- ADB 授权自动点击（无障碍，覆盖 Android<11 / 经典网络 ADB 弹窗） -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/adb_auto_click_section"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnAdbAutoClick"
+            android:layout_width="wrap_content"
+            android:layout_height="52dp"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/btn_secondary"
+            android:text="@string/adb_auto_click_btn_off"
+            android:textColor="@color/text_btn_secondary"
+            android:textSize="16sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusDown="@id/btnEnableNetAdb" />
+
+        <!-- 网络 ADB 自愈 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/adb_net_adb_section"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnEnableNetAdb"
+            android:layout_width="wrap_content"
+            android:layout_height="52dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/btn_secondary"
+            android:text="@string/adb_net_adb_btn"
+            android:textColor="@color/text_btn_secondary"
+            android:textSize="16sp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@id/btnAdbAutoClick"
+            android:nextFocusDown="@id/etAdbHost" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_adb_host"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etAdbHost"
+            android:layout_width="300dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:layout_marginBottom="20dp"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/btnEnableNetAdb"
+            android:nextFocusDown="@id/etAdbPort" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_adb_port"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etAdbPort"
+            android:layout_width="200dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_input"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:paddingHorizontal="16dp"
+            android:inputType="number"
+            android:singleLine="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:layout_marginBottom="24dp"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/etAdbHost"
+            android:nextFocusDown="@id/rbModeAuto" />
+
+        <!-- Runtime Mode -->
+
         <!-- Runtime Mode -->
         <TextView
             android:layout_width="wrap_content"
@@ -48,7 +145,8 @@
                 android:background="@drawable/bg_option"
                 android:padding="8dp"
                 android:focusable="true"
-                android:focusableInTouchMode="true" />
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@id/etAdbPort" />
 
             <RadioButton
                 android:id="@+id/rbModeRoot"

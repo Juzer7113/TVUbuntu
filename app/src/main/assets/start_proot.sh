@@ -49,6 +49,10 @@ esac
 progress() { echo "UC_PROGRESS|$1|$2"; }
 log() { echo "$(date '+%m-%d %H:%M:%S') $1" >> "$LOG"; }
 
+# 注意：proot 模式设计即不依赖 root。本固件 untrusted_app 域被 SELinux 拒绝执行
+# app_data_file（guest bash/ld 所在类型），execve 返回 EACCES。此限制需在固件 sepolicy
+# 构建期放行（见下方「诊断结论」），与运行时是否 root 无关。
+
 # A4 修复：防重入锁。避免 BootService（开机广播）与 MainActivity（打开 App）并发触发
 # 导致重复解包 / 抢端口。
 # 原子锁：用 mkdir 做互斥（并发下只有一个实例能成功创建），目录内记录本实例 PID。
@@ -85,6 +89,8 @@ if pgrep -x dropbear >/dev/null 2>&1 || pgrep -f "rootfs\." >/dev/null 2>&1; the
 fi
 
 mkdir -p "$ROOT" "$TMP" "$ROOTFS"
+# proot 临时目录必须存在且可写（f2fs bug probe / loader 需要；toybox tar 可能丢权限）
+chmod 1777 "$TMP" 2>/dev/null
 rm -f "$SSH_UP"
 : > "$LOG" 2>/dev/null
 
@@ -222,6 +228,36 @@ fix_so_symlinks() {
   done
 }
 
+# 修复 ELF 可执行位：toybox tar 解压可能丢失 x/setuid 位（setuid 已在 fix_tar_extras 修复）。
+# 失败现象：proot error: execve("/usr/bin/bash"): Permission denied
+# 原因：ld-linux 动态加载器或 ELF 二进制失去 x 位后，宿主内核以 App uid 真实检查权限 → EACCES。
+# 需在 LD_LIBDIR/LD_SO 定义后调用（见首次安装流程）。
+fix_exec_perms() {
+  local ld="$ROOTFS/usr/lib/$LD_LIBDIR/$LD_SO"
+  if [ -f "$ld" ]; then
+    chmod 755 "$ld" 2>/dev/null
+    log "[proot] 修复 ld 权限: $LD_SO = $(ls -l "$ld" 2>/dev/null | awk '{print $1}')"
+  else
+    log "[proot] WARNING: ld 文件不存在 $ld（ELF 加载器缺失，proot 无法启动）"
+  fi
+  chmod 755 "$ROOTFS/usr/bin" "$ROOTFS/usr/sbin" "$ROOTFS/usr/lib/$LD_LIBDIR" 2>/dev/null
+  local f
+  if command -v od >/dev/null 2>&1; then
+    for f in "$ROOTFS"/usr/bin/* "$ROOTFS"/usr/sbin/*; do
+      [ -f "$f" ] || continue
+      # ELF 魔数 \x7fELF，仅对真实 ELF 加 x，避免误伤文本/脚本
+      if [ "$(dd if="$f" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]; then
+        chmod 755 "$f" 2>/dev/null
+      fi
+    done
+  else
+    # 精简固件无 od：base rootfs 的 bin 目录几乎全为可执行 ELF，统一加 x（误伤面小）
+    chmod 755 "$ROOTFS"/usr/bin/* "$ROOTFS"/usr/sbin/* 2>/dev/null
+    log "[proot] od 不可用，已统一 chmod 755 /usr/bin /usr/sbin"
+  fi
+  log "[proot] ELF 可执行位修复完成"
+}
+
 # 首次安装：在 proot 内安装 openssh-server
 if [ ! -f "$FLAG" ]; then
   if [ -f "$TAR" ]; then
@@ -296,6 +332,47 @@ if [ ! -f "$FLAG" ]; then
     log "[proot] WARNING: 未找到真实 ld 文件 $TRUE_LD，加载器兜底跳过（proot 可能无法启动）"
   fi
 
+  # 修复 ELF 可执行位（依赖上方 LD_LIBDIR/LD_SO，必须在此调用）
+  fix_exec_perms
+
+  # 诊断探针 v2：权限位已修复（755）后 execve 仍 EACCES，全面排查 SELinux / 文件完整性 / tmp / 挂载
+  # 关键判定：
+  #  - ld显式加载bash OK  → bash/ld 文件完好，限制在 execve/interpreter/SELinux 层
+  #  - selinux_enforce=1  → SELinux enforcing 且 app_data_file 执行受限（需 root 关 SELinux 或改 root 模式）
+  #  - bash_magic != 7f454c46 → bash 文件损坏（ENOEXEC）
+  #  - tmp不可写 → proot 临时目录问题（需 -b tmp:/tmp 且 1777）
+  SELINUX_CTX="$(cat /proc/self/attr/current 2>/dev/null || echo n/a)"
+  BASH_PERM="$(ls -l "$ROOTFS/usr/bin/bash" 2>/dev/null | awk '{print $1}')"
+  BASH_CTX="$(ls -Z "$ROOTFS/usr/bin/bash" 2>/dev/null | awk '{print $1}' || echo n/a)"
+  BASH_MAGIC="$(dd if="$ROOTFS/usr/bin/bash" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+  LD_PERM="$(ls -l "$ROOTFS/usr/lib/$LD_LIBDIR/$LD_SO" 2>/dev/null | awk '{print $1}')"
+  SELINUX_ENFORCE="$(cat /sys/fs/selinux/enforce 2>/dev/null || echo n/a)"
+  DATA_MOUNT="$(grep ' /data ' /proc/mounts 2>/dev/null | head -1 | awk '{print $4}')"
+  log "[proot] 诊断: umask=$(umask 2>/dev/null)"
+  log "[proot] 诊断: bash=$BASH_PERM ld=$LD_PERM"
+  log "[proot] 诊断: bash_magic=$BASH_MAGIC"
+  log "[proot] 诊断: selinux_enforce=$SELINUX_ENFORCE"
+  log "[proot] 诊断: selinux_ctx=$SELINUX_CTX"
+  log "[proot] 诊断: data_mount=$DATA_MOUNT"
+  log "[proot] 诊断: bash_ctx=$BASH_CTX"
+  if "$ROOTFS/usr/lib/$LD_LIBDIR/$LD_SO" "$ROOTFS/usr/bin/bash" -c 'echo probe-ok' >/dev/null 2>&1; then
+    log "[proot] 诊断: ld显式加载bash OK（bash文件完好，限制在execve/interpreter/SELinux层）"
+  else
+    log "[proot] 诊断: ld显式加载bash 失败 rc=$?（bash/ld文件损坏或执行受限）"
+  fi
+  if touch "$TMP/.probe" 2>/dev/null; then rm -f "$TMP/.probe" 2>/dev/null; log "[proot] 诊断: tmp可写OK"; else log "[proot] 诊断: tmp不可写!"; fi
+  # 诊断结论（实锤判定）
+  if [ "$BASH_PERM" = "-rwxr-xr-x" ] && [ "$BASH_MAGIC" = "7f454c46" ] \
+     && echo "$SELINUX_CTX" | grep -q 'untrusted_app' \
+     && echo "$BASH_CTX" | grep -q 'app_data_file'; then
+    log "[proot] 诊断结论: SELinux 拒绝 untrusted_app 执行 app_data_file（EACCES=rc=126）。proot 模式本就无 root，此限制需固件侧放开，与运行时是否 root 无关。"
+    log "[proot]   修复路径（均无需运行时 root，固件构建期施行）："
+    log "[proot]   ① 固件 sepolicy 加: allow untrusted_app app_data_file:file { execute execute_no_trans };"
+    log "[proot]      （若 AOSP neverallow 致编译失败，放宽/移除对应 neverallow，或为应用建独立域）"
+    log "[proot]   ② 将本应用签名为 platform/system 特权应用（特权域默认可 exec app_data_file）"
+    log "[proot]   ③ 自定义域 + file_contexts：把 /data/data/com.ubuntucontroller 标为可 exec 的 type"
+  fi
+
   log "[proot] 首次安装，进入 rootfs 安装 SSH..."
   progress 75 "首次初始化 Ubuntu..."
 
@@ -343,6 +420,10 @@ if [ ! -f "$FLAG" ]; then
     done
   fi
 
+  # pkgs 仅 26.04 存在（上方按需创建）；22.04/24.04 动态为空，避免 proot bind 不存在的目录
+  BIND_PKGS=""
+  [ -d "$ROOT/pkgs" ] && BIND_PKGS="-b $ROOT/pkgs:/pkgs"
+
   rm -f "$ROOT/.install_exit"
   (
     export SSH_PASS CODENAME MARCH
@@ -351,7 +432,8 @@ if [ ! -f "$FLAG" ]; then
       -b /dev -b /proc -b /sys \
       -b "$ROOT/resolv.conf:/etc/resolv.conf" \
       -b "$LOG:/hostlog" \
-      -b "$ROOT/pkgs:/pkgs" \
+      -b "$TMP:/tmp" \
+      $BIND_PKGS \
       /bin/bash /install_ssh_proot.sh
     echo $? > "$ROOT/.install_exit"
   ) >> "$LOG" 2>&1
@@ -417,6 +499,7 @@ rm -f "$PIDFILE"
     -b /dev -b /proc -b /sys \
     -b "$ROOT/resolv.conf:/etc/resolv.conf" \
     -b "$LOG:/hostlog" \
+    -b "$TMP:/tmp" \
     /bin/bash -c 'echo "[proot] bash wrapper 启动 pid=$$" >> /hostlog 2>/dev/null || true; exec /bin/bash /run_ubuntu_proot.sh'
   echo "[proot] proot 进程退出 rc=$?"
 ) >> "$LOG" 2>&1 &

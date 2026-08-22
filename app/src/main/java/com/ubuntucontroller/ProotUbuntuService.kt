@@ -40,7 +40,7 @@ object ProotUbuntuService {
      * 此过程以 App 自身身份执行，无需 root。
      */
     fun deployAssets(context: Context) {
-        val assets = listOf("start_proot.sh", "stop_proot.sh", "install_ssh_proot.sh", "run_ubuntu_proot.sh")
+        val assets = listOf("start_proot.sh", "stop_proot.sh", "install_ssh_proot.sh", "run_ubuntu_proot.sh", "start_proot_adb.sh")
         val root = prootRoot(context)
         val cmd = StringBuilder("mkdir -p $root")
 
@@ -197,6 +197,30 @@ object ProotUbuntuService {
             )
         }
 
+        // ---- 启动顺序：优先复用已获取的 ADB；拿不到才走纯 proot（绝不重新获取 ADB）----
+        // ADB 由「获取 ADB」按钮 / 开软件自动获取 事先拿到（用户已点过），
+        // 启动时不重新获取（不弹无障碍、不重配对、不长期等授权），只复用已建立的连接。
+        if (AdbAutoAcquire.isEnabled(context)) {
+            try {
+                val adbTransport = AdbProotService.reuseAcquiredTransport(context)
+                if (adbTransport != null) {
+                    onProgress(2, "复用已获取的 ADB 启动 Ubuntu（不再重新获取）…")
+                    val adbResult = AdbProotService.launchViaTransport(context, adbTransport, onProgress)
+                    if (adbResult.status != UbuntuService.Status.ERROR) return adbResult
+                    onProgress(0, "ADB 启动 Ubuntu 失败（${adbResult.message}），退回纯 proot…")
+                } else {
+                    onProgress(0, "未获取到可用 ADB，走纯 proot…")
+                }
+            } catch (e: Throwable) {
+                Log.e("ProotUbuntuService", "复用 ADB 启动异常，已忽略并退回纯 proot", e)
+            }
+        } else {
+            onProgress(0, "已关闭 ADB 自动获取，直接纯 proot…")
+        }
+
+        // 纯 proot（本地，无需 root/adb）
+        onProgress(5, "走纯 proot 启动 Ubuntu…")
+
         // 密码经 `sh -c` 传递，需单引号包裹并转义内部单引号，防止空格/特殊字符破坏参数或被注入
         val safePassword = password.replace("'", "'\\''")
         val result = ProotExecutor.executeStreaming(
@@ -211,7 +235,7 @@ object ProotUbuntuService {
             }
         }
 
-        return when {
+        val localState = when {
             result.exitCode == 0 -> {
                 Thread.sleep(3000)
                 val probe = probeState(context)
@@ -249,9 +273,12 @@ object ProotUbuntuService {
                 null
             )
         }
+
+        return localState
     }
 
     fun stopUbuntu(context: Context): UbuntuService.ServiceState {
+        if (AdbProotService.isAdbLaunched(context)) return AdbProotService.stopUbuntu(context)
         deployAssets(context)
         val script = "${prootRoot(context)}/stop_proot.sh"
         val check = ProotExecutor.execute("test -f $script && echo ok")
@@ -281,6 +308,7 @@ object ProotUbuntuService {
     // ---------- 状态探测 ----------
 
     fun detectStatus(context: Context): UbuntuService.ServiceState {
+        if (AdbProotService.isAdbLaunched(context)) return AdbProotService.detectStatus(context)
         val probe = probeState(context)
         val sshInfo = if (probe.running) buildSSHInfo(context, probe.sshUp) else null
         val message = when {
@@ -297,7 +325,9 @@ object ProotUbuntuService {
         return UbuntuService.ServiceState(status, message, sshInfo)
     }
 
-    fun isRunning(context: Context): Boolean = probeState(context).running
+    fun isRunning(context: Context): Boolean =
+        if (AdbProotService.isAdbLaunched(context)) AdbProotService.isRunning(context)
+        else probeState(context).running
 
     private data class Probe(val running: Boolean, val sshUp: Boolean, val starting: Boolean)
 
@@ -332,6 +362,7 @@ object ProotUbuntuService {
     // ---------- 日志/命令控制台 ----------
 
     fun readLog(context: Context): String {
+        if (AdbProotService.isAdbLaunched(context)) return AdbProotService.readLog(context)
         val r = ProotExecutor.execute("cat ${prootRoot(context)}/ubuntu.log 2>/dev/null || echo '(无日志文件)'")
         return r.output.trim().ifBlank { "(无日志内容)" }
     }
@@ -345,6 +376,7 @@ object ProotUbuntuService {
         command: String,
         timeoutMs: Long = 60_000
     ): ProotExecutor.ShellResult {
+        if (AdbProotService.isAdbLaunched(context)) return AdbProotService.runInUbuntu(context, command, timeoutMs)
         val version = UbuntuService.getUbuntuVersion(context)
         val arch = UbuntuService.rootfsArch(context)
         val root = prootRoot(context)

@@ -1,16 +1,23 @@
 package com.ubuntucontroller
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.ubuntucontroller.AdbAutoAcquire
+import com.ubuntucontroller.AdbWirelessPairing
 import com.ubuntucontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,6 +70,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnStop.applyTvButtonFocus()
         binding.btnCopyLog.applyTvButtonFocus()
         binding.btnSettings.applyTvButtonFocus()
+        binding.btnAdb.applyTvButtonFocus()
     }
 
     private fun setupButtons() {
@@ -75,6 +83,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnCopyLog.setOnClickListener { copyLog() }
+
+        // ADB 按钮：点击即（重新）申请 adb 授权 / 重试连接（传统 5555 通道）。
+        // 第三级递进：手动点击仍连不上（adbd 不可达 / 版本过低）→ 自动弹无线配窗口。
+        binding.btnAdb.setOnClickListener { requestAdbAuth() }
     }
 
     // 复制完整运行日志到剪贴板，并落盘到外部存储，便于直接分享 / adb 拉取
@@ -359,6 +371,20 @@ class MainActivity : AppCompatActivity() {
                 UbuntuRuntime.detectStatus(this@MainActivity)
             }
             updateUI(state)
+
+            // ADB 按钮仅在无 root 时显示（有 root 走 ROOT/chroot，不需要 adb 通道）
+            updateAdbVisibility(hasRoot)
+
+            // 无 root 时需要 adb 通道：软件一打开就自动获取 ADB（无线 TLS 优先，否则经典 5555）。
+            // 首次手动授权属正常；之后开软件/开机自动直连。
+            if (!hasRoot && AdbAutoAcquire.isEnabled(this@MainActivity)) {
+                AdbAutoAcquire.acquire(
+                    this@MainActivity,
+                    onProgress = { msg -> binding.tvAdbStatus.text = msg },
+                    onDone = { res -> onAdbAutoAcquireDone(res) }
+                )
+            }
+
             // 勾选「软件启动时启动」且当前未运行时，打开 App 自动按生效模式拉起服务
             if (UbuntuService.getAutoStart(this@MainActivity) &&
                 state.status == UbuntuService.Status.STOPPED
@@ -366,6 +392,198 @@ class MainActivity : AppCompatActivity() {
                 triggerStart()
             }
         }
+    }
+
+    // ===== ADB 鉴权按钮 =====
+
+    /** 主动连接 adbd 并等待设备授权；结果回主线程刷新按钮与提示。
+     *  第三级递进：手动点击仍连不上（adbd 不可达 / 版本过低）→ 自动弹无线配窗口（Android 11+），
+     *  低版本设备给引导提示。AWAITING（等盒子上点「允许 USB 调试」）属正常手动授权步骤，不弹。 */
+    private fun requestAdbAuth() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            AdbProotService.requestAdbAuth(this@MainActivity) { res ->
+                runOnUiThread {
+                    updateAdbButton(res)
+                    if (res.state == AdbProotService.AuthState.UNREACHABLE ||
+                        res.state == AdbProotService.AuthState.ERROR
+                    ) {
+                        onManualAdbFailed()
+                    }
+                }
+            }
+        }
+    }
+
+    /** 手动点 ADB 仍失败后的兜底：Android 11+ 自动弹无线配窗口；低版本引导去开网络 ADB / 无障碍。 */
+    private fun onManualAdbFailed() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            showPairDialog()
+        } else {
+            Toast.makeText(this, getString(R.string.adb_manual_failed_hint), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 根据鉴权状态刷新 ADB 按钮：就绪=绿色「ADB就绪」，其余=红色「无ADB」；状态行给更细说明。 */
+    private fun updateAdbButton(res: AdbProotService.AdbAuthResult) {
+        val ready = res.state == AdbProotService.AuthState.CONNECTED
+        if (ready) {
+            binding.btnAdb.setText(R.string.adb_ready)
+            binding.btnAdb.setBackgroundResource(R.drawable.btn_adb_ready)
+            binding.tvAdbStatus.setTextColor(ContextCompat.getColor(this, R.color.status_running))
+        } else {
+            binding.btnAdb.setText(R.string.adb_no_adb)
+            binding.btnAdb.setBackgroundResource(R.drawable.btn_adb_red)
+            binding.tvAdbStatus.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+        }
+        binding.btnAdb.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+        binding.tvAdbStatus.text = res.message
+        if (res.state == AdbProotService.AuthState.AWAITING) {
+            Toast.makeText(this, getString(R.string.adb_allow_hint), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** AdbAutoAcquire 的结果映射到 ADB 按钮：成功=绿「ADB就绪」，失败=红 + 说明。 */
+    private fun onAdbAutoAcquireDone(res: AdbAutoAcquire.Result) {
+        if (res.success) {
+            if (res.mode == AdbAutoAcquire.Mode.WIRELESS) {
+                markWirelessReady()
+            } else {
+                binding.btnAdb.setText(R.string.adb_ready)
+                binding.btnAdb.setBackgroundResource(R.drawable.btn_adb_ready)
+                binding.btnAdb.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+                binding.tvAdbStatus.setTextColor(ContextCompat.getColor(this, R.color.status_running))
+                binding.tvAdbStatus.text = res.message
+            }
+        } else {
+            binding.btnAdb.setText(R.string.adb_no_adb)
+            binding.btnAdb.setBackgroundResource(R.drawable.btn_adb_red)
+            binding.btnAdb.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+            binding.tvAdbStatus.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+            binding.tvAdbStatus.text = res.message
+        }
+    }
+
+    /** ADB 按钮仅在设备无 root 时显示（有 root 走 ROOT/chroot，不需要 adb 通道）。同时重接焦点链跨过隐藏按钮。 */
+    private fun updateAdbVisibility(hasRoot: Boolean) {
+        if (hasRoot) {
+            binding.btnAdb.visibility = View.GONE
+            binding.tvAdbStatus.visibility = View.GONE
+            binding.btnStart.nextFocusLeftId = R.id.btnSettings
+            binding.btnSettings.nextFocusRightId = R.id.btnStart
+        } else {
+            binding.btnAdb.visibility = View.VISIBLE
+            binding.tvAdbStatus.visibility = View.VISIBLE
+            binding.btnStart.nextFocusLeftId = R.id.btnAdb
+            binding.btnSettings.nextFocusRightId = R.id.btnAdb
+            binding.btnAdb.nextFocusLeftId = R.id.btnSettings
+            binding.btnAdb.nextFocusRightId = R.id.btnStart
+        }
+    }
+
+    // ===== 无线调试免弹窗配对对话框 =====
+
+    /** 标记无线 TLS 已连接：ADB 按钮变绿「ADB就绪」，状态行说明免弹窗。 */
+    private fun markWirelessReady() {
+        binding.btnAdb.setText(R.string.adb_ready)
+        binding.btnAdb.setBackgroundResource(R.drawable.btn_adb_ready)
+        binding.btnAdb.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+        binding.tvAdbStatus.setTextColor(ContextCompat.getColor(this, R.color.status_running))
+        binding.tvAdbStatus.text = getString(R.string.adb_wireless_ready)
+    }
+
+    /** 弹出无线调试配对对话框：mDNS 自动发现 + 6 位配对码静默授权（免弹窗）。 */
+    private fun showPairDialog() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
+            Toast.makeText(this, getString(R.string.pair_adb_low), Toast.LENGTH_LONG).show()
+            return
+        }
+        val view = layoutInflater.inflate(R.layout.pairing_dialog, null)
+        val etHost = view.findViewById<EditText>(R.id.etPairHost)
+        val etPort = view.findViewById<EditText>(R.id.etPairPort)
+        val etCode = view.findViewById<EditText>(R.id.etPairCode)
+        // 配对地址/端口预填 127.0.0.1:5555（经典网络 ADB 默认），保持可手动修改
+        etHost.setText("127.0.0.1")
+        etPort.setText("5555")
+        val tvStatus = view.findViewById<TextView>(R.id.tvPairStatus)
+        val btnDiscover = view.findViewById<Button>(R.id.btnPairDiscover)
+        val btnConnect = view.findViewById<Button>(R.id.btnPairConnect)
+        val btnCancel = view.findViewById<Button>(R.id.btnPairCancel)
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .create()
+        // 弹窗窗口背景用配置页同款 bg_primary，保证与设置页视觉一致（标题已在布局内自定义）
+        dialog.window?.setBackgroundDrawableResource(R.color.bg_primary)
+        // 软键盘弹出时压缩窗口，避免遮挡底部按钮（手机场景）
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+
+        btnDiscover.setOnClickListener {
+            tvStatus.text = getString(R.string.pair_status, "发现中…")
+            AdbWirelessPairing.discoverPairing(this, 8000) { found ->
+                runOnUiThread {
+                    if (found != null) {
+                        etHost.setText(found.host)
+                        etPort.setText(found.port.toString())
+                        tvStatus.text = getString(R.string.pair_status, "已发现 ${found.host}:${found.port}")
+                    } else {
+                        tvStatus.text = getString(R.string.pair_status, "未发现，请手动填入")
+                    }
+                }
+            }
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnConnect.setOnClickListener {
+            val host = etHost.text.toString().trim()
+            val portStr = etPort.text.toString().trim()
+            val code = etCode.text.toString().trim()
+            if (host.isEmpty() || portStr.isEmpty() || code.isEmpty()) {
+                tvStatus.text = getString(R.string.pair_status, "地址/端口/配对码均不能为空")
+                return@setOnClickListener
+            }
+            val port = portStr.toIntOrNull()
+            if (port == null || port <= 0 || port > 65535) {
+                tvStatus.text = getString(R.string.pair_status, "端口无效（1-65535）")
+                return@setOnClickListener
+            }
+            btnConnect.isEnabled = false
+            tvStatus.text = getString(R.string.pair_status, getString(R.string.pair_pairing))
+            AdbProotService.pairWireless(this, host, port, code) { ok, msg ->
+                runOnUiThread {
+                    btnConnect.isEnabled = true
+                    tvStatus.text = getString(R.string.pair_status, msg)
+                    if (ok) {
+                        markWirelessReady()
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                    } else {
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        dialog.show()
+
+        // 机顶盒（遥控器 D-pad）：初始焦点落在主操作按钮，避免一进弹窗就自动弹软键盘（电视无物理键盘）
+        view.post { btnConnect.requestFocus() }
+
+        // 窗口尺寸上限：宽 ≤ min(95%屏宽, 480dp)，高 ≤ 90%屏高；
+        // 内容超出时 ScrollView 滚动，保证小平屏手机「配对并连接」按钮必可达（不再被裁切、触摸滑不动）
+        val metrics = resources.displayMetrics
+        val maxW = minOf((metrics.widthPixels * 0.95f).toInt(), (480 * metrics.density).toInt())
+        val maxH = (metrics.heightPixels * 0.90f).toInt()
+        dialog.window?.setLayout(maxW, maxH)
+
+        // 反向键（返回键）焦点控制：弹窗内按返回 = 关闭弹窗并归位焦点到主界面 ADB 按钮（遥控器可预期）
+        dialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                dialog.dismiss()
+                true
+            } else {
+                false
+            }
+        }
+        dialog.setOnDismissListener { binding.btnAdb.requestFocus() }
     }
 
     private fun refreshStatus() {

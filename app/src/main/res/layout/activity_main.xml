@@ -40,12 +40,28 @@
                 android:textSize="13sp"
                 android:text="@string/checking_root" />
 
-            <!-- 右上角操作按钮群：启动 / 停止 / 复制日志 / 配置，大小一致 -->
+            <!-- 右上角操作按钮群：ADB / 启动 / 停止 / 复制日志 / 配置，大小一致 -->
+            <Button
+                android:id="@+id/btnAdb"
+                android:layout_width="96dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/btn_adb_red"
+                android:text="@string/adb_no_adb"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/btnSettings"
+                android:nextFocusRight="@id/btnStart"
+                android:nextFocusDown="@id/etTerminal" />
+
             <Button
                 android:id="@+id/btnStart"
                 android:layout_width="80dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="8dp"
                 android:background="@drawable/btn_start"
                 android:text="@string/btn_start_short"
                 android:textColor="@color/text_btn_primary"
@@ -53,7 +69,7 @@
                 android:textStyle="bold"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
-                android:nextFocusLeft="@id/btnSettings"
+                android:nextFocusLeft="@id/btnAdb"
                 android:nextFocusRight="@id/btnStop"
                 android:nextFocusDown="@id/etTerminal" />
 
@@ -101,7 +117,7 @@
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:nextFocusLeft="@id/btnCopyLog"
-                android:nextFocusRight="@id/btnStart"
+                android:nextFocusRight="@id/btnAdb"
                 android:nextFocusDown="@id/etTerminal" />
         </LinearLayout>
 
@@ -168,6 +184,16 @@
                         android:layout_marginStart="26dp"
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvAdbStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginStart="26dp"
+                        android:text="@string/adb_idle"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
 
                     <ProgressBar
                         android:id="@+id/pbInstall"

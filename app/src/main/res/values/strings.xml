@@ -63,4 +63,50 @@
     <string name="command_empty">请输入命令</string>
     <string name="command_output_hint">输出将显示在这里</string>
     <string name="command_not_running">Ubuntu 未启动，请先点击「启动」</string>
+
+    <string name="btn_adb_short">无ADB</string>
+    <string name="adb_ready">ADB就绪</string>
+    <string name="adb_no_adb">无ADB</string>
+    <string name="adb_idle">ADB：未连接（点此申请授权）</string>
+    <string name="adb_connecting">ADB：连接中，请在盒子上点「允许 USB 调试」…</string>
+    <string name="adb_unreachable">ADB：设备不可达，请开启「网络 ADB 调试」</string>
+    <string name="adb_awaiting">ADB：待授权，请用遥控器点「允许 USB 调试」后点本按钮重试</string>
+    <string name="adb_connected">ADB：已连接并授权</string>
+    <string name="adb_error">ADB：错误，详见日志</string>
+    <string name="adb_allow_hint">请在机顶盒上用遥控器点「允许 USB 调试」（勾选“总是允许”可免再次授权），然后回到本 App 点 ADB 按钮重试。</string>
+
+    <string name="adb_accessibility_desc">TVUbuntu 的 ADB 授权自动点击服务：当盒子上出现「允许 USB 调试 / 无线调试 / OTG」系统弹窗时自动点「允许」，覆盖 Android 11 以下或经典网络 ADB 等无配对码的场景，免去在 TV Launcher 上手动点弹窗。</string>
+    <string name="adb_auto_click_section">ADB 授权自动点击（无障碍）</string>
+    <string name="adb_auto_click_btn_off">开启 ADB 授权自动点击</string>
+    <string name="adb_auto_click_btn_on">ADB 授权自动点击：已开启</string>
+    <string name="adb_auto_click_hint">开启后，盒子的「允许 USB 调试」等弹窗会被自动点掉，经典网络 ADB 也能免手动授权。若无法在此直接开启，会跳转系统无障碍设置，请手动开启「Ubuntu 控制器」。</string>
+    <string name="adb_auto_click_opening">正在尝试开启…</string>
+    <string name="adb_auto_click_open_settings">无法直接开启，请到系统「无障碍」中手动开启「Ubuntu 控制器」，并勾选「允许 USB 调试」授权弹窗后回来。</string>
+    <string name="setting_adb_host">ADB Host</string>
+    <string name="setting_adb_port">ADB Port</string>
+    <string name="adb_invalid_host">ADB Host 不能为空</string>
+    <string name="adb_invalid_port">ADB Port 无效：1-65535</string>
+    <string name="adb_error_unreachable">ADB：无法连接到 %1$s:%2$d，请确认网络 ADB 已开启且地址正确</string>
+    <string name="adb_error_protocol">ADB：已连接到 %1$s:%2$d，但对端不是 adbd</string>
+    <string name="adb_error_rejected">ADB：对端拒绝了当前密钥，请授权或预置 adb_keys</string>
+    <string name="adb_error_detail">ADB：握手失败：%1$s</string>
+
+    <!-- 无线调试免弹窗配对 -->
+    <string name="pair_title">无线调试配对（免弹窗）</string>
+    <string name="pair_hint">在盒子的「开发者选项 → 无线调试」点「使用配对码配对设备」，填入其显示的地址、端口与 6 位配对码。也可点「自动发现」从局域网 mDNS 获取。</string>
+    <string name="pair_host">配对地址</string>
+    <string name="pair_port">配对端口</string>
+    <string name="pair_code">配对码（6 位）</string>
+    <string name="pair_discover">自动发现</string>
+    <string name="pair_connect">配对并连接</string>
+    <string name="pair_pairing">配对中…</string>
+    <string name="pair_status">状态：%s</string>
+    <string name="pair_adb_low">无线调试需 Android 11（API 30）及以上</string>
+    <string name="adb_wireless_ready">ADB：无线 TLS 已连接（免弹窗配对）</string>
+    <string name="adb_manual_failed_hint">ADB 仍未连接：请在「开发者选项」开启「网络 ADB 调试」，或前往设置开启「ADB 授权自动点击」</string>
+
+    <!-- ADB 网络自愈（默认开启自动获取，此处仅暴露自愈入口） -->
+    <string name="adb_net_adb_section">网络 ADB 自愈</string>
+    <string name="adb_net_adb_btn">开启网络 ADB（5555）</string>
+    <string name="adb_net_adb_hint">在已获特权（Root / 已授权 adb）时把 adbd 切到 TCP 5555 并持久化，之后可自动直连</string>
 </resources>

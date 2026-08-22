@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.3.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.1-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -54,6 +54,8 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 | 🚀 **生产级 Web 栈** | 一条命令的 `bootstrap_server.sh` 在 `supervisor` 下拉起 **nginx + PHP-FPM + MariaDB + Redis**。 |
 | 🖥️ **命令控制台** | 主界面新增实时命令终端卡片，可直接在电视上查看 `cat /etc/os-release`、`df -h` 等输出，无需离开电视去开 SSH 客户端。 |
 | 🌱 **免 Root 的 Proot 模式** | 没有 Root？改用 `proot` 运行 Ubuntu——同样是真正的 Ubuntu 用户态，只是无法使用特权端口（<1024）和 systemd。适合被锁死或没 Root 的盒子。 |
+| 📡 **ADB 自动获取** | 启动应用与开机时静默获取 ADB 权限（Android 11+ 走免弹窗无线 TLS 配对，经典 5555 通道由无障碍自动点击兜底）——「经 ADB 跑 Proot」零配置即可用，无需 Root。 |
+| 🔧 **收紧固件也能跑 Proot** | 当 App 自身进程域被 SELinux 禁止直 exec proot（`EACCES`）时，自动改走「经设备 adbd 以 ADB 协议拉起 proot」的回退路径，兼容更多固件。 |
 
 ---
 
@@ -107,21 +109,32 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.3.1
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.5.1
 │   ├── proguard-rules.pro
 │   └── src/main/
-│       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器
+│       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器 + ADB 无障碍服务
 │       ├── assets/
 │       │   ├── start.sh                 # chroot 引导：挂载、装 SSH、运行
-│       │   └── stop.sh                  # 收尾：杀掉 sshd、卸载挂载
+│       │   ├── stop.sh                  # 收尾：杀掉 sshd、卸载挂载
+│       │   ├── start_proot.sh           # proot 引导（免 Root）
+│       │   ├── start_proot_adb.sh       # 经 adbd 以 ADB 拉起 proot（收紧固件）
+│       │   └── adb_key.pem / adb_cert.pem / adb_key.pub   # 内置 ADB RSA 密钥对
 │       ├── java/com/ubuntucontroller/
-│       │   ├── MainActivity.kt          # TV 主界面：状态、启停、SSH 卡片
-│       │   ├── SettingsActivity.kt      # 脚本 / SSH / 版本 / 架构 配置
-│       │   ├── UbuntuService.kt         # 核心逻辑：rootfs、架构、状态、SSH 信息
+│       │   ├── MainActivity.kt          # TV 主界面：状态、启停、SSH 卡片、ADB 状态
+│       │   ├── SettingsActivity.kt      # 脚本 / SSH / 版本 / 架构 / ADB 配置
+│       │   ├── UbuntuService.kt         # 核心逻辑：rootfs、架构、状态、SSH 信息、ADB 主机/端口
 │       │   ├── ShellExecutor.kt         # root shell 执行器（自动探测 su 模式）
 │       │   ├── BootReceiver.kt          # 设备开机后自动拉起
+│       │   ├── AdbClient.kt             # 纯 Kotlin ADB 客户端（CNXN/AUTH，RSA 由 AndroidKeyStore 签名）
+│       │   ├── AdbProotService.kt       # 经 ADB 跑 proot 的编排（密钥、推送、启动、停止）
+│       │   ├── AdbAutoAcquire.kt         # 开软件/开机自动获取 ADB
+│       │   ├── AdbAuthAutoClickService.kt / AdbAccessibilityHelper.kt  # 自动点掉 USB 调试弹窗
+│       │   ├── AdbNetworkEnabler.kt     # 网络 ADB 自愈（setprop + 重启 adbd）
+│       │   ├── UbuntuAdbManager.kt / AdbTransport.kt / AdbWirelessPairing.kt / AdbWirelessTransport.kt
+│       │   ├── AdbKeyStore.kt           # AndroidKeyStore 中的 ADB RSA 密钥
 │       │   └── TvFocusUtils.kt          # 方向键焦点辅助（TV 光标）
-│       └── res/                         # 布局、图标、字符串、颜色、主题
+│       └── res/                         # 布局、图标、字符串、颜色、主题、xml/
+├── scripts/                             # gen_adb_pubkey.py / bake_adb_keys.sh（把 App 公钥烘焙进固件）
 ├── bootstrap_server.sh                  # 🚀 一条命令搭建生产级 Web 栈
 ├── build.gradle.kts                     # 根工程
 ├── settings.gradle.kts
@@ -264,6 +277,12 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.5.1（ADB 获取 + 兼容更多设备的 Proot）
+
+- **Proot 兼容更多设备 —— 新增 ADB 回退路径。** 在收紧固件上，App 自身进程域因 SELinux（`app_data_file` 的 `EACCES`）被禁止直 exec proot；TVUbuntu 现在会在直 exec 失败后，自动改走「经设备自带 adbd（shell 域）以 ADB 协议拉起 proot」的路径，proot 二进制与 rootfs 落在 `/data/local/tmp/ubuntu/`（shell 域可写可执行），从而让很多此前直接失败的设备也能跑起来。
+- **ADB 自动获取（开软件/开机）。** 启动应用与开机时，App 自动获取 ADB 权限——Android 11+ 走免弹窗无线 TLS 配对，经典 5555 通道由无障碍自动点击兜底——无需 Root 即可让「经 ADB 跑 Proot」开箱即用。
+- 新增纯 Kotlin ADB 客户端（`AdbClient.kt`）、`AdbProotService.kt` 编排、`start_proot_adb.sh`、公钥烘焙工具（`scripts/`）、ADB 主机/端口偏好；状态/停止/终端/日志均可在直 exec 与 ADB 两条路径间正确路由。
 
 ### v1.3.1（版本号升级 + 低端口说明）
 - **版本号升级**：`1.2.3` → `1.3.1`（versionCode 5 → 8）。此前多个版本迭代未同步 versionCode，本次一并修正。
