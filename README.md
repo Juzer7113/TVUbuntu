@@ -269,61 +269,61 @@ mysql -u root                   # MariaDB (unix_socket auth)
 - Added a pure-Kotlin ADB client (`AdbClient.kt`), `AdbProotService.kt` orchestration, `start_proot_adb.sh`, baked-pubkey tooling (`scripts/`), and ADB host/port preferences. Status / stop / console / log now route correctly through either the direct or the ADB path.
 
 ### v1.4.4
-- **配置页精简（按用户三项改进）：**
-  1. **ADB 自动获取（开软件/开机）默认开启** → 从配置页移除该开关 UI，保持常开即可，无需用户干预（底层 `AdbAutoAcquire` 默认 `true` 不变，仅去 UI）。
-  2. **删除「显示本机 ADB 公钥」按钮及 `showAdbPubkey()`**：公钥需 root 才能写入 `/data/misc/adb/adb_keys`，而有 root 就走另一条 root 路径，属悖论，故直接去掉；底层 `ensureKey`/`exportPubkey` 因 ADB 连接内部仍依赖而保留不动。
-  3. **进配置页初始焦点改放「开启 ADB 授权自动点击」按钮（`btnAdbAutoClick`）**，便于遥控器用户直接开启无障碍自动点击。
-  - 同步清理 `strings.xml`（`adb_pubkey_*` 7 条 + `adb_auto_acquire_*` 2 条）、`activity_settings.xml`（删 ADB 公钥区块与自动获取开关区块、重接焦点链 `btnAdbAutoClick ⇄ btnEnableNetAdb ⇄ etAdbHost`）、`SettingsActivity.kt`（删相关监听/import/方法）。
-- **Version bump** to `1.4.4` (versionCode 13 → 14)。`clean assembleDebug` 全量编译 BUILD SUCCESSFUL（仅与本次无关的历史警告：deprecated `recycle()`、参数命名、未用参数）。
+- **Settings page cleanup (per the user's three improvements):**
+  1. **ADB auto-acquire (on app launch / boot) is now on by default** → removed the toggle UI from Settings; it stays always-on with no user interaction needed (the underlying `AdbAutoAcquire` default `true` is unchanged, only the UI was removed).
+  2. **Removed the "Show local ADB public key" button and `showAdbPubkey()`** — the public key needs root to write to `/data/misc/adb/adb_keys`, but if you already have root you take the other root path, which is a paradox, so it was dropped outright; the underlying `ensureKey`/`exportPubkey` are kept because the ADB connection internally still depends on them.
+  3. **Initial focus in Settings now lands on the "Enable ADB auth auto-click" button (`btnAdbAutoClick`)**, making it easy for remote-control users to enable the accessibility auto-click directly.
+  - Also cleaned up `strings.xml` (7 `adb_pubkey_*` entries + 2 `adb_auto_acquire_*`), `activity_settings.xml` (removed the ADB pubkey block and the auto-acquire toggle block, reconnected the focus chain `btnAdbAutoClick ⇄ btnEnableNetAdb ⇄ etAdbHost`), and `SettingsActivity.kt` (removed related listeners/imports/methods).
+- **Version bump** to `1.4.4` (versionCode 13 → 14). `clean assembleDebug` full build BUILD SUCCESSFUL (only unrelated historical warnings remain: deprecated `recycle()`, parameter naming, unused params).
 
 ### v1.4.3
-- **彻底移除 Shizuku 集成（按用户要求「不显示、不集成」）：**
-  - 删除 `ShizukuBridge.kt`（零依赖反射桥，原本始终处于「未集成」休眠态，仅造成状态行困惑）。
-  - `AdbNetworkEnabler` 移除 `enableViaShizuku`；`AdbAutoAcquire` / `AdbProotService` 自愈调用去掉 Shizuku 分支，仅保留 **Root + 已授权 adb** 两条特权来源。
-  - `SettingsActivity` 移除 Shizuku 状态行、`授权 Shizuku` 按钮及其 `openShizuku()` 方法与 import。
-  - `activity_settings.xml` 删除 Shizuku 区块，并把焦点链重接（`btnEnableNetAdb ⇄ etAdbHost`）。
-  - `strings.xml` 删除 `adb_shizuku_*` 四条，并清理 `adb_net_adb_hint` 文案；`build.gradle.kts` / `settings.gradle.kts` / `AndroidManifest.xml` 删除 Shizuku 依赖、rikka 仓库、权限与 provider 注释。
-  - 原因：机顶盒走 root / 烘焙公钥 5555 / 经典 ADB 弹窗三件套即可，Shizuku 仅对无 root 无无线调试的手机/平板有意义，且会造成「未集成」状态误导；用户确认不再需要该通道。
-- **Version bump** to `1.4.3` (versionCode 12 → 13)。Debug + Release 均 BUILD SUCCESSFUL。
+- **Fully removed Shizuku integration (per the user's "don't show, don't integrate" request):**
+  - Deleted `ShizukuBridge.kt` (a zero-dependency reflection bridge that was always in a dormant "not integrated" state, only causing confusion in the status line).
+  - `AdbNetworkEnabler` removed `enableViaShizuku`; `AdbAutoAcquire` / `AdbProotService` self-heal calls dropped the Shizuku branch, keeping only the **Root + authorized adb** two privileged sources.
+  - `SettingsActivity` removed the Shizuku status line, the "Authorize Shizuku" button, its `openShizuku()` method and import.
+  - `activity_settings.xml` deleted the Shizuku block and reconnected the focus chain (`btnEnableNetAdb ⇄ etAdbHost`).
+  - `strings.xml` removed 4 `adb_shizuku_*` entries and cleaned up the `adb_net_adb_hint` text; `build.gradle.kts` / `settings.gradle.kts` / `AndroidManifest.xml` removed Shizuku dependencies, the rikka repo, permissions and provider comments.
+  - Reason: boxes work fine with the root / baked-pubkey 5555 / classic ADB popup trio, and Shizuku only makes sense for phones/tablets without root or wireless debugging, and would cause "not integrated" status confusion; the user confirmed the channel is no longer needed.
+- **Version bump** to `1.4.3` (versionCode 12 → 13). Debug + Release both BUILD SUCCESSFUL.
 
 ### v1.4.2
-- **无 root 设备的 ADB 获取三级递进（按用户明确流程）：**
-  1. 开 App（无 root 且「ADB 自动获取」开启）→ `AdbAutoAcquire` 自动获取 ADB；
-  2. 自动获取失败 → ADB 按钮显示红「无ADB」，用户手动点击重试（`requestAdbAuth`）；
-  3. 手动点击仍连不上（adbd 不可达 / 版本过低，即 `UNREACHABLE`/`ERROR`）→ **自动弹出无线配窗口**（Android 11+）；低版本（无无线调试）给引导提示去开「网络 ADB 调试」或「ADB 授权自动点击」。
-- **移除主页面「无线配对」按钮：** 改为由第 3 级自动弹出，焦点链重接（`btnAdb` 与 `btnStart` 相邻）。
-- **无线配弹窗改用配置页风格：** `pairing_dialog.xml` 根背景 `bg_primary`、标签 `text_secondary`、输入框 `@drawable/bg_input`（`text_primary`/16sp/52dp/16dp padding）、按钮 `btn_secondary`/`btn_start`（16sp/52dp），并内嵌自定义标题（`text_primary` 20sp 粗体），弹窗窗口背景设为 `bg_primary`。
-- **配对地址/端口预填 `127.0.0.1:5555`**（经典网络 ADB 默认），保持可手动修改；「自动发现」仍会覆盖填入。
-- **Version bump** to `1.4.2` (versionCode 11 → 12)。Debug + Release 均 BUILD SUCCESSFUL。
+- **Three-tier progressive ADB acquisition for no-root devices (per the user's explicit flow):**
+  1. Open the App (no root and "ADB auto-acquire" on) → `AdbAutoAcquire` auto-acquires ADB;
+  2. Auto-acquire fails → the ADB button shows red "No ADB", user taps to retry manually (`requestAdbAuth`);
+  3. Manual tap still can't connect (adbd unreachable / too old, i.e. `UNREACHABLE`/`ERROR`) → **auto-pop the wireless pairing dialog** (Android 11+); older versions (no wireless debugging) get a guide to enable "Network ADB debugging" or "ADB auth auto-click".
+- **Removed the main-screen "Wireless pairing" button:** it is now auto-popped by tier 3, focus chain reconnected (`btnAdb` adjacent to `btnStart`).
+- **Wireless pairing dialog restyled to match Settings:** `pairing_dialog.xml` root background `bg_primary`, label `text_secondary`, input `@drawable/bg_input` (`text_primary`/16sp/52dp/16dp padding), buttons `btn_secondary`/`btn_start` (16sp/52dp), with an embedded custom title (`text_primary` 20sp bold), and the dialog window background set to `bg_primary`.
+- **Pairing address/port pre-filled `127.0.0.1:5555`** (default classic network ADB), still editable; "auto-discover" still overrides it.
+- **Version bump** to `1.4.2` (versionCode 11 → 12). Debug + Release both BUILD SUCCESSFUL.
 
 ### v1.4.1
-- **反转无 root 设备的启动优先级（按用户明确流程）：** 之前是「本地 proot 优先 → SELinux 拦截才回退 ADB」；现改为 **「有 root → root 模式；没 root → 先获取 ADB，ADB 通了就经 ADB 启动 Ubuntu；ADB 获取失败才退回本地 proot（最后的路）」**，逻辑与用户的整体目标（ADB 授权只是手段，最终要启动 Ubuntu）一致。
-  - **`AdbProotService.acquireTransportForLaunch(context): AdbTransport?`：** 新增同步获取 transport 方法，被启动流程直接复用——含①尽量开启无障碍自动点击、②Android 11+ 无线 TLS 配对直连（免弹窗）优先、③经典 5555 不可达时先 `AdbNetworkEnabler` 自愈再鉴权、④鉴权成功持久化 5555。返回非 null 即已授权可用，null 即获取失败。
-  - **`ProotUbuntuService.startUbuntu` 改为 ADB 优先：** 无 root 且「ADB 自动获取」开关开启时，先 `acquireTransportForLaunch` → `launchViaTransport` 经 ADB 推送并常驻启动 proot+SSH；取得 transport 但启动失败、或获取失败，均回退本地 proot。移除原「SELinux 拦截才切 ADB」兜底（因 ADB 已优先）。
-  - **开关联动：** 由 `AdbAutoAcquire.isEnabled(context)` 控制（默认开启）。关闭时直接走本地 proot，不再尝试 ADB。
-- **Version bump** to `1.4.1` (versionCode 10 → 11)。Debug + Release 均 BUILD SUCCESSFUL。
+- **Reversed the launch priority for no-root devices (per the user's explicit flow):** previously it was "local proot first → fall back to ADB only if SELinux blocks"; now it is **"have root → root mode; no root → acquire ADB first, and if ADB works launch Ubuntu over ADB; only fall back to local proot if ADB acquisition fails"**, consistent with the user's overall goal (ADB auth is just a means, the end is to launch Ubuntu).
+  - **`AdbProotService.acquireTransportForLaunch(context): AdbTransport?`:** new synchronous transport method reused directly by the launch flow — includes ① try to enable accessibility auto-click as much as possible, ② Android 11+ wireless TLS pairing direct connect (no popup) first, ③ if classic 5555 unreachable, self-heal via `AdbNetworkEnabler` then authenticate, ④ on successful auth persist 5555. Non-null means authorized and usable, null means acquisition failed.
+  - **`ProotUbuntuService.startUbuntu` now ADB-first:** when no root and "ADB auto-acquire" is on, first `acquireTransportForLaunch` → `launchViaTransport` to push and keep proot+SSH resident over ADB; if transport acquired but launch fails, or acquisition fails, fall back to local proot. Removed the original "switch to ADB only if SELinux blocks" fallback (since ADB is now first).
+  - **Toggle linkage:** controlled by `AdbAutoAcquire.isEnabled(context)` (default on). When off, go straight to local proot, no ADB attempt.
+- **Version bump** to `1.4.1` (versionCode 10 → 11). Debug + Release both BUILD SUCCESSFUL.
 
 ### v1.4.0
-- **ADB 自动获取（开软件 / 开机）— 对齐应用管家「掌控性」补齐：** 用户范围从全志/H618 盒子扩展到手机、平板，要求 ADB 开 App/开机即自动获取，并补齐应用管家的其余掌控能力。
-  - **新增 `AdbAutoAcquire` 统一编排器：** 开 App（`MainActivity`）与开机（`AdbBootReceiver` → `BOOT_COMPLETED`）触发。定序：① 尽量以 `WRITE_SECURE_SETTINGS` 直接开启无障碍自动点击；② Android 11+ 优先走无线 TLS 配对（免弹窗，开屏直连）；③ 经典 5555 不可达时先「网络 ADB 自愈」再鉴权；④ 经典通道鉴权成功后把 5555 持久化（`persist.*`），下次自动直连。首次手动授权属正常。
-  - **新增 `AdbNetworkEnabler` 网络 ADB 自愈：** 在已获特权 shell（已授权 adb / Root / Shizuku）时 `setprop service.adb.tcp.port 5555` + `persist.adb.tcp.port 5555` + `ctl.restart adbd`（对齐应用管家 `ba/u.java:221`）。
-  - **新增 `ShizukuBridge` 手机/平板兜底通道（零依赖反射）：** 编译期不引用 `rikka.shizuku.Shizuku`，故默认即可构建；用户在 `build.gradle.kts` 取消注释 `rikka.shizuku:api`/`:provider` + `settings.gradle.kts` 取消注释 `maven.rikka.app` + 安装 Shizuku App 后，`isAvailable()/exec()/requestPermissionWithListener()` 经反射调用真实 API，提供免 adb 弹窗特权 shell（本沙箱无 `maven.rikka.app`，故依赖默认未启用）。
-  - **新增 `AdbBootReceiver`：** `BOOT_COMPLETED` 后后台自动获取 ADB（不启动 Ubuntu），与「软件启动时启动」解耦；仅无 root 且开关开启时触发。
-  - **设置页新增：** 「ADB 自动获取（开软件/开机）」开关、「网络 ADB 自愈」按钮、Shizuku 状态与「授权 Shizuku」按钮。
-  - **Manifest：** 新增 `RECEIVE_BOOT_COMPLETED` 权限 + `AdbBootReceiver` 接收器 + `moe.shizuku.manager.permission.API_V23` 权限（Shizuku provider 注释占位，启用依赖后取消注释）。
-- **Version bump** to `1.4.0` (versionCode 9 → 10)。Debug + Release 均 BUILD SUCCESSFUL。
+- **ADB auto-acquire (on app launch / boot) — closing the gap with the app manager's "control":** the user scope expanded from Allwinner/H618 boxes to phones and tablets, requiring ADB to auto-acquire on app open/boot, and completing the app manager's other control capabilities.
+  - **New `AdbAutoAcquire` unified orchestrator:** triggered on app open (`MainActivity`) and boot (`AdbBootReceiver` → `BOOT_COMPLETED`). Sequence: ① try `WRITE_SECURE_SETTINGS` to enable accessibility auto-click directly; ② Android 11+ prefers wireless TLS pairing (no popup, connect on screen unlock); ③ if classic 5555 unreachable, first "network ADB self-heal" then authenticate; ④ after classic-channel auth success, persist 5555 (`persist.*`) for next auto-connect. The first manual auth is normal.
+  - **New `AdbNetworkEnabler` network ADB self-heal:** when a privileged shell is obtained (authorized adb / Root / Shizuku), `setprop service.adb.tcp.port 5555` + `persist.adb.tcp.port 5555` + `ctl.restart adbd` (aligns with app manager `ba/u.java:221`).
+  - **New `ShizukuBridge` phone/tablet fallback channel (zero-dependency reflection):** does not reference `rikka.shizuku.Shizuku` at compile time, so it builds by default; after the user uncomments `rikka.shizuku:api`/`:provider` in `build.gradle.kts` + `maven.rikka.app` in `settings.gradle.kts` + installs the Shizuku app, `isAvailable()/exec()/requestPermissionWithListener()` call the real API via reflection, providing an adb-popup-free privileged shell (this sandbox has no `maven.rikka.app`, so the dependency is disabled by default).
+  - **New `AdbBootReceiver`:** after `BOOT_COMPLETED`, auto-acquire ADB in the background (does not launch Ubuntu), decoupled from "launch on app start"; only triggered when no root and the toggle is on.
+  - **Settings page additions:** "ADB auto-acquire (on app/boot)" toggle, "Network ADB self-heal" button, Shizuku status and "Authorize Shizuku" button.
+  - **Manifest:** added `RECEIVE_BOOT_COMPLETED` permission + `AdbBootReceiver` receiver + `moe.shizuku.manager.permission.API_V23` permission (Shizuku provider comment placeholder, uncomment after enabling dependency).
+- **Version bump** to `1.4.0` (versionCode 9 → 10). Debug + Release both BUILD SUCCESSFUL.
 
 ### v1.3.2
-- **补齐 ADB 双通道（对齐应用管家）:** 应用管家并非全程无弹窗——它还有「经典网络 ADB（TCP 5555，RSA 握手）」回退通道，靠 `AccService` 无障碍服务自动点掉「允许 USB 调试」系统弹窗。TVUbuntu 此前只实现了 Android 11+ 无线调试 TLS 配对（无弹窗），对 Android 11 以下 / 无配对码功能的盒子（如 H618、全志）会卡在授权。现补齐：
-  - **新增 `AdbAuthAutoClickService`（无障碍服务）:** 监听窗口变化，命中 `com.android.systemui` / `com.android.settings` 内含「USB 调试 / 无线调试 / OTG / USB 设备」关键字的弹窗，自动点「允许」。保守匹配，不会误点其它弹窗。配置见 `res/xml/adb_auth_accessibility.xml`。
-  - **设置页「ADB 授权自动点击」开关:** 优先以 `WRITE_SECURE_SETTINGS` 直接开启，失败则跳转系统无障碍设置引导手动开启。
-  - **经典 5555 通道回退:** `AdbProotService` 在无线配对不可用（Android < 11 或 `AdbPairingRequiredException`）时自动走经典 TCP 握手，弹窗由无障碍服务自动授权（`AdbClient` 已发 `AUTH_PUBKEY` 触发）。
-  - **固件烘焙公钥脚本:** `scripts/gen_adb_pubkey.py` 生成 `assets/adb_key.pub`（adb_keys 格式，与运行期算法一致），`scripts/bake_adb_keys.sh` 写入 `/data/misc/adb/adb_keys` 与 `/adb_keys` 并修正权限/SELinux。烘焙后经典通道零弹窗，无需无障碍权限。
-- **Version bump** to `1.3.2` (versionCode 8 → 9)。
+- **Added the ADB dual-channel (aligning with the app manager):** the app manager is not popup-free the whole time — it also has a "classic network ADB (TCP 5555, RSA handshake)" fallback channel, using the `AccService` accessibility service to auto-click away the "Allow USB debugging" system popup. TVUbuntu previously only implemented Android 11+ wireless debugging TLS pairing (no popup), which would stall on boxes below Android 11 / without pairing code (e.g. H618, Allwinner). Now added:
+  - **New `AdbAuthAutoClickService` (accessibility service):** listens for window changes, matches popups from `com.android.systemui` / `com.android.settings` containing "USB debugging / wireless debugging / OTG / USB device" keywords, and auto-clicks "Allow". Conservative matching, won't mis-click other popups. Config in `res/xml/adb_auth_accessibility.xml`.
+  - **Settings "ADB auth auto-click" toggle:** prefers `WRITE_SECURE_SETTINGS` to enable directly, falls back to jumping to system accessibility settings for manual enable.
+  - **Classic 5555 channel fallback:** `AdbProotService` automatically takes the classic TCP handshake when wireless pairing is unavailable (Android < 11 or `AdbPairingRequiredException`), and the popup is auto-authorized by the accessibility service (`AdbClient` already sent `AUTH_PUBKEY` to trigger it).
+  - **Firmware-baked pubkey script:** `scripts/gen_adb_pubkey.py` generates `assets/adb_key.pub` (adb_keys format, consistent with the runtime algorithm), `scripts/bake_adb_keys.sh` writes to `/data/misc/adb/adb_keys` and `/adb_keys` and fixes permission/SELinux. After baking, the classic channel is popup-free and needs no accessibility permission.
+- **Version bump** to `1.3.2` (versionCode 8 → 9).
 
 ### v1.3.1
 - **Version bump** to `1.3.1` (versionCode 5 → 8); prior minor iterations had not kept versionCode in sync.
-- **无线调试免弹窗配对（Proot/ADB 通道）:** 新增「无线配对」按钮与支持库 `muntashirakon/adb`（libadb-android 3.1.1）。流程：mDNS 发现 `_adb-tls-pairing` → 输入 6 位配对码静默授权本机公钥（写入设备 `adb_keys`，**无「允许 USB 调试」弹窗**）→ 经 `_adb-tls-connect` 建 TLS 长连接。开屏若已配对过会自动 TLS 直连。私钥与自签证书内置 `assets/adb_key.pem` + `adb_cert.pem`（同一把 RSA 2048 密钥，公钥恒定，旧的「烘焙进固件」方案依旧有效）。传统 5555 明文通道保留为回退。
+- **Wireless debugging popup-free pairing (Proot/ADB channel):** new "Wireless pairing" button and support library `muntashirakon/adb` (libadb-android 3.1.1). Flow: mDNS discovers `_adb-tls-pairing` → enter 6-digit pairing code to silently authorize the local pubkey (written to device `adb_keys`, **no "Allow USB debugging" popup**) → establish a TLS long-lived connection via `_adb-tls-connect`. On screen unlock, if already paired it auto-connects via TLS. Private key and self-signed cert are built into `assets/adb_key.pem` + `adb_cert.pem` (same RSA 2048 key, constant pubkey, the old "bake into firmware" scheme still works). The classic 5555 plaintext channel is kept as a fallback.
 - **Low-port note (Proot mode):** Proot mode runs *unprivileged* — Android restricts non-root processes to binding ports **≥ 1024** (`net.ipv4.ip_unprivileged_port_start=1024`). So nginx/Baota (aaPanel) listening on `888` fails with `bind() to 0.0.0.0:888 failed (13: Permission denied)` — that is an Android kernel limit, **not** an app-level port block (the app's own SSH daemon uses 8022 for this reason). Fix: use a port ≥ 1024 (e.g. `listen 8088`) or run in Root mode.
 - **Arch & Android version coverage confirmed:** detection uses `getprop ro.product.cpu.abilist` + `uname -m` (handles x86_64, MuMu faked-aarch64 correction, aarch64, armv7/armv8); `minSdk 21` (Android 5.0) + `targetSdk 34` (Android 14); all three ABI libproot.so already carry the empty-path fix — emulator and real device behave the same.
 
