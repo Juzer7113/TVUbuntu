@@ -376,14 +376,27 @@ class MainActivity : AppCompatActivity() {
             // ADB 按钮仅在无 root 时显示（有 root 走 ROOT/chroot，不需要 adb 通道）
             updateAdbVisibility(hasRoot)
 
+            // 勾选「软件启动时启动」且当前未运行时，打开 App 自动拉起服务。
+            // 关键顺序：若有 ADB 自动获取，必须等其完成（成功/失败）再启动 Ubuntu，
+            // 否则启动瞬间 ADB 尚未就绪 → reuseAcquiredTransport 返回 null → 误走纯 proot。
+            val shouldAutoStart = UbuntuService.getAutoStart(this@MainActivity) &&
+                state.status == UbuntuService.Status.STOPPED
+
             // 无 root 时需要 adb 通道：软件一打开就自动获取 ADB（无线 TLS 优先，否则经典 5555）。
-            // 首次手动授权属正常；之后开软件/开机自动直连。
+            // 首次手动授权属正常；之后开软件/开机自动直连。获取完成后才允许自启 Ubuntu。
             if (!hasRoot && AdbAutoAcquire.isEnabled(this@MainActivity)) {
                 AdbAutoAcquire.acquire(
                     this@MainActivity,
                     onProgress = { msg -> binding.tvAdbStatus.text = msg },
-                    onDone = { res -> onAdbAutoAcquireDone(res) }
+                    onDone = { res ->
+                        onAdbAutoAcquireDone(res)
+                        // ADB 获取完毕（无论成败）才自启 —— 保证「先有 ADB，再启动」
+                        if (shouldAutoStart && !isFinishing) triggerStart()
+                    }
                 )
+            } else if (shouldAutoStart) {
+                // 有 root 或已关闭 ADB 自动获取：无需等 ADB，直接自启
+                triggerStart()
             }
 
             // 网络 ADB 开关：开启后按配置地址端口自持（开软件即把 adbd 切到该端口）
@@ -391,13 +404,6 @@ class MainActivity : AppCompatActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     AdbNetworkEnabler.enable(this@MainActivity)
                 }
-            }
-
-            // 勾选「软件启动时启动」且当前未运行时，打开 App 自动按生效模式拉起服务
-            if (UbuntuService.getAutoStart(this@MainActivity) &&
-                state.status == UbuntuService.Status.STOPPED
-            ) {
-                triggerStart()
             }
         }
     }
