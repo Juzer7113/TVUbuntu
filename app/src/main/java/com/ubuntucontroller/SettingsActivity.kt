@@ -228,6 +228,12 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnCancel.setOnClickListener {
             finish()
         }
+
+        // 「软件启动自启 Ubuntu」开关即时保存，不必依赖点「保存」，
+        // 避免只勾开关未保存导致开软件不自启。
+        binding.swAutoStart.setOnCheckedChangeListener { _, isOn ->
+            UbuntuService.setAutoStart(this, isOn)
+        }
     }
 
     /**

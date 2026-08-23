@@ -21,6 +21,7 @@ import com.ubuntucontroller.AdbNetworkEnabler
 import com.ubuntucontroller.AdbWirelessPairing
 import com.ubuntucontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -377,23 +378,34 @@ class MainActivity : AppCompatActivity() {
             updateAdbVisibility(hasRoot)
 
             // 勾选「软件启动时启动」且当前未运行时，打开 App 自动拉起服务。
-            // 关键顺序：若有 ADB 自动获取，必须等其完成（成功/失败）再启动 Ubuntu，
-            // 否则启动瞬间 ADB 尚未就绪 → reuseAcquiredTransport 返回 null → 误走纯 proot。
+            // Proot：先自动获取 ADB，拿到（或失败）后再自启 Ubuntu；若 ADB 获取较慢
+            // （如首次等待手动授权），最多等 20s 兜底以纯 proot 拉起，避免「一直不启动」。
+            // Root：无需 ADB，直接自启。
             val shouldAutoStart = UbuntuService.getAutoStart(this@MainActivity) &&
                 state.status == UbuntuService.Status.STOPPED
 
-            // 无 root 时需要 adb 通道：软件一打开就自动获取 ADB（无线 TLS 优先，否则经典 5555）。
-            // 首次手动授权属正常；之后开软件/开机自动直连。获取完成后才允许自启 Ubuntu。
             if (!hasRoot && AdbAutoAcquire.isEnabled(this@MainActivity)) {
+                // 无 root 时需要 adb 通道：软件一打开就自动获取 ADB（无线 TLS 优先，否则经典 5555）。
+                // 首次手动授权属正常；之后开软件/开机自动直连。
+                var adbAcquireDone = false
                 AdbAutoAcquire.acquire(
                     this@MainActivity,
                     onProgress = { msg -> binding.tvAdbStatus.text = msg },
                     onDone = { res ->
+                        adbAcquireDone = true
                         onAdbAutoAcquireDone(res)
                         // ADB 获取完毕（无论成败）才自启 —— 保证「先有 ADB，再启动」
                         if (shouldAutoStart && !isFinishing) triggerStart()
                     }
                 )
+                // 兜底：ADB 获取较慢（如等手动点允许）时，最多等 20s 仍以纯 proot 拉起，
+                // 绝不卡死；若 20s 内 ADB 已就绪，上面 onDone 已先拉起，这里跳过。
+                if (shouldAutoStart) {
+                    lifecycleScope.launch {
+                        delay(20_000)
+                        if (!adbAcquireDone && !isFinishing) triggerStart()
+                    }
+                }
             } else if (shouldAutoStart) {
                 // 有 root 或已关闭 ADB 自动获取：无需等 ADB，直接自启
                 triggerStart()
