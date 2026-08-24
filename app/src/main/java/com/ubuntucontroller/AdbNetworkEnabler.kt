@@ -38,7 +38,7 @@ object AdbNetworkEnabler {
         port: Int = UbuntuService.getAdbPort(context)
     ): Boolean {
         return try {
-            val adb = AdbClient(host, port, AdbKeyHelper(context))
+            val adb = AdbClassicTransport(context, host, port)
             adb.connect()
             adb.exec(cmdFor(port))
             adb.close()

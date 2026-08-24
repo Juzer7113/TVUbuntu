@@ -8,7 +8,7 @@
 [![语言](https://img.shields.io/badge/语言-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![最低 SDK](https://img.shields.io/badge/最低%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -110,7 +110,7 @@ TVUbuntu 让这些硬件「发挥余热」，变成一台**真正的 Linux 服�
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.5.2
+│   ├── build.gradle.kts                 # App 模块：minSdk 21，版本 1.5.3
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback 启动器 + 开机接收器 + ADB 无障碍服务
@@ -126,13 +126,17 @@ TVUbuntu/
 │       │   ├── UbuntuService.kt         # 核心逻辑：rootfs、架构、状态、SSH 信息、ADB 主机/端口
 │       │   ├── ShellExecutor.kt         # root shell 执行器（自动探测 su 模式）
 │       │   ├── BootReceiver.kt          # 设备开机后自动拉起
-│       │   ├── AdbClient.kt             # 纯 Kotlin ADB 客户端（CNXN/AUTH，RSA 由 AndroidKeyStore 签名）
+│       │   ├── AdbTransport.kt          # ADB 传输统一接口（经典 TCP + 无线 TLS）
+│       │   ├── AdbClassicTransport.kt   # 经典 TCP 5555 实现（libadb，授权招数梯子）
+│       │   ├── AdbWirelessTransport.kt / AdbWirelessPairing.kt  # 无线 TLS 配对/传输
+│       │   ├── AdbSyncPush.kt           # sync 协议推送（官方 adb push 通道）
 │       │   ├── AdbProotService.kt       # 经 ADB 跑 proot 的编排（密钥、推送、启动、停止）
-│       │   ├── AdbAutoAcquire.kt         # 开软件/开机自动获取 ADB
+│       │   ├── AdbAutoAcquire.kt        # 开软件/开机自动获取 ADB
 │       │   ├── AdbAuthAutoClickService.kt / AdbAccessibilityHelper.kt  # 自动点掉 USB 调试弹窗
 │       │   ├── AdbNetworkEnabler.kt     # 网络 ADB 自愈（setprop + 重启 adbd）
-│       │   ├── UbuntuAdbManager.kt / AdbTransport.kt / AdbWirelessPairing.kt / AdbWirelessTransport.kt
-│       │   ├── AdbKeyStore.kt           # AndroidKeyStore 中的 ADB RSA 密钥
+│       │   ├── UbuntuAdbManager.kt / AdbKeyStore.kt   # libadb 连接管理器 / ADB RSA 密钥
+│       │   ├── RuntimeLog.kt            # 应用内运行时日志（内存环形 + 落盘轮转）
+│       │   ├── UbuntuApp.kt             # Application：统一初始化 RuntimeLog
 │       │   └── TvFocusUtils.kt          # 方向键焦点辅助（TV 光标）
 │       └── res/                         # 布局、图标、字符串、颜色、主题、xml/
 ├── scripts/                             # gen_adb_pubkey.py / bake_adb_keys.sh（把 App 公钥烘焙进固件）
@@ -280,6 +284,17 @@ mysql -u root                   # MariaDB（unix_socket 认证）
 ---
 
 ## 📝 更新日志
+
+### v1.5.3（Proot-ADB 路径全面打通，收紧/无 Root 盒子可用）
+- **经典 TCP 5555 通道重建在 `libadb-android` 上**（`AdbClassicTransport`，与无线通道同库），复刻参考应用管家的「授权招数梯子」：直连 → `autoConnect` → 需要配对码 → root `setprop service.adb.tcp.port` + `ctl.restart adbd` → 再直连。
+- **推送改用官方 ADB sync 协议**（`AdbSyncPush`：SEND/DATA/DONE/OKAY）。旧的 `shell:cat` 管道在部分 adbd 上永久卡死——PTY 终端规则会吞二进制字节，且 `CLSE` 不一定让 `cat` 的 stdin 收到 EOF（连续两次「卡在推送 proot 二进制」的根因）。
+- **推送后权限/SELinux 标签自愈**：`chmod 755` + `cp/mv` 重建文件（标签变 `shell_data_file`）+ `ls -lZ` 诊断进日志——修复 `sh script: Permission denied`。
+- **`PROOT_TMP_DIR` 必须是宿主绝对路径**，并补齐 rootfs 关键目录（tmp/var/tmp/run 等）——修复 `can't canonicalize /tmp` 启动即崩。
+- **SSH 就绪标记 `.ssh_up` 用内容 0/1**（dropbear 起来写 1），就绪判断真实可靠；探测改用 `pgrep -x` 精确进程名 + **复用已建立连接** + 20s 短超时。
+- **进度条 100% = SSH 完全就绪**；首次安装超时放宽到 **5 分钟**（解压 rootfs + apt 装 dropbear 可能超过 3 分钟）。
+- **新增应用内运行时日志**（`RuntimeLog`，部署每步/设备侧 stdout `[proot-out]` 全记录）；「复制日志」合并运行时日志 + 设备 ubuntu.log。
+- 主页状态简洁化；SSH 卡片显示**真实局域网 IP**:端口。
+- **版本号** 升到 `1.5.3`（versionCode 18）。
 
 ### v1.5.2（自定义 ADB 地址端口 + 网络 ADB 持久开关）
 - **自定义 ADB 主机/端口 + 网络 ADB 持久开关。** 设置页原本就有的 ADB 主机/端口输入框现在真正生效：原来的「网络 ADB 自愈」一次性按钮改为**持久开关**。开启后，App 会在**每次启动应用与开机**（`MainActivity` 与 `AdbBootReceiver`）时用 `setprop service.adb.tcp.port <端口>` + `setprop persist.adb.tcp.port <端口>` + `ctl.restart adbd` 把 adbd 切到你配置的地址:端口，电脑随时 `adb connect <主机>:<端口>` 无需再开 USB 调试。端口不再写死 5555——`AdbNetworkEnabler.enableViaRoot/enableViaAdb` 现读取配置值，`enable()` 作为「先 Root 后 ADB」的一键封装。

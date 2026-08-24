@@ -118,6 +118,24 @@ fix_so_symlinks() {
 }
 fix_so_symlinks
 
+# 4a) proot 需要可写的临时目录——docker 风格精简 rootfs 常缺关键目录，proot 启动即崩：
+#     "can't create temporary directory: No such file or directory"。
+#     关键：PROOT_TMP_DIR 必须是【宿主绝对路径】（参照 start_proot.sh 成功路径），
+#     设为 $ROOT/tmp（已创建且可写）；同时补齐 rootfs 内 tmp/var/tmp/run 等关键目录。
+mkdir -p "$ROOT/tmp" 2>/dev/null
+chmod 1777 "$ROOT/tmp" 2>/dev/null
+export PROOT_TMP_DIR="$ROOT/tmp"
+mkdir -p "$ROOTFS/tmp" "$ROOTFS/var/tmp" "$ROOTFS/run" "$ROOTFS/run/sshd" "$ROOTFS/run/lock" \
+         "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/etc/apt" "$ROOTFS/etc/apt/sources.list.d" \
+         "$ROOTFS/var/lib/apt/lists/partial" "$ROOTFS/var/cache/apt/archives/partial" 2>/dev/null
+chmod 1777 "$ROOTFS/tmp" "$ROOTFS/var/tmp" "$ROOTFS/run/lock" 2>/dev/null
+chmod 755 "$ROOTFS/run" "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" 2>/dev/null
+log "PROOT_TMP_DIR=$ROOT/tmp 已就绪；rootfs 关键目录已补齐"
+# .ssh_up 预建为 0（未就绪）：经 proot -b 绑定为 guest /hostsshup，dropbear 起来后 echo 1；
+# 预建值 0 避免「文件存在即误报 SSH 就绪」
+echo 0 > "$ROOT/.ssh_up" 2>/dev/null
+log ".ssh_up 标记已重置为 0"
+
 # 4) 把 install / run 脚本放进 rootfs（install_ssh_proot.sh / run_ubuntu_proot.sh 由 App 推送至 $ROOT）
 cp -f "$ROOT/install_ssh_proot.sh" "$ROOTFS/install_ssh_proot.sh" 2>/dev/null
 cp -f "$ROOT/run_ubuntu_proot.sh" "$ROOTFS/run_ubuntu_proot.sh" 2>/dev/null
@@ -125,14 +143,20 @@ cp -f "$ROOT/run_ubuntu_proot.sh" "$ROOTFS/run_ubuntu_proot.sh" 2>/dev/null
 log "脚本已同步进 rootfs"
 
 # 5) 首次安装 openssh/dropbear（在 proot 内执行，需联网 apt）
+#    已装检测：rootfs 已含 SSH 服务（含纯 proot 路径装过的）→ 跳过 apt，避免重复 update 卡网络。
 if [ ! -f "$FLAG" ]; then
+  if [ -x "$ROOTFS/usr/sbin/dropbear" ] || [ -x "$ROOTFS/usr/bin/dropbear" ] || \
+     [ -x "$ROOTFS/usr/sbin/sshd" ] || [ -x "$ROOTFS/usr/sbin/dropbearmulti" ]; then
+    touch "$FLAG"
+    log "rootfs 已含 SSH 服务（dropbear/sshd），跳过 apt 安装"
+  else
   progress 30 "首次安装：在 proot 内安装 SSH 服务（需联网，约 1-3 分钟）…"
-  export SSH_PASS CODENAME MARCH
+  export SSH_PASS CODENAME MARCH APT_BASE
   CODENAME_MAP="$VERSION"
   case "$VERSION" in
     22.04) CODENAME="jammy" ;;
     24.04) CODENAME="noble" ;;
-    26.04) CODENAME="focal" ;;
+    26.04) CODENAME="questing" ;;
     *) CODENAME="jammy" ;;
   esac
   MARCH_MAP="$ARCH"
@@ -142,9 +166,15 @@ if [ ! -f "$FLAG" ]; then
     amd64) MARCH="x86_64" ;;
     *) MARCH="aarch64" ;;
   esac
+  # APT_BASE 按架构导出（run 阶段补装 dropbear 也用它；arm 必须走 ubuntu-ports，否则 404）
+  case "$ARCH" in
+    amd64) export APT_BASE="http://mirrors.tuna.tsinghua.edu.cn/ubuntu" ;;
+    *)     export APT_BASE="http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports" ;;
+  esac
   "$PROOT_BIN" -r "$ROOTFS" -0 -w /root \
     -b /dev -b /proc -b /sys \
     -b "$ROOT/resolv.conf:/etc/resolv.conf" \
+    -b "$ROOT/tmp:/tmp" \
     -b "$LOG:/hostlog" \
     /bin/bash /install_ssh_proot.sh
   if [ -x "$ROOTFS/usr/sbin/sshd" ] || command -v dropbear >/dev/null 2>&1; then
@@ -152,6 +182,7 @@ if [ ! -f "$FLAG" ]; then
     log "首次安装完成，写标记 $FLAG"
   else
     log "WARNING: 安装后未检测到 sshd/dropbear，可能网络受限，run 阶段将再次尝试"
+  fi
   fi
 else
   log "已安装过，跳过 apt 安装"
@@ -166,5 +197,7 @@ export PORT SSH_PASS CODENAME MARCH
 exec "$PROOT_BIN" -r "$ROOTFS" -0 -w /root \
   -b /dev -b /proc -b /sys \
   -b "$ROOT/resolv.conf:/etc/resolv.conf" \
+  -b "$ROOT/tmp:/tmp" \
   -b "$LOG:/hostlog" \
+  -b "$ROOT/.ssh_up:/hostsshup" \
   /bin/bash /run_ubuntu_proot.sh

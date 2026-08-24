@@ -37,7 +37,14 @@ class BootService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(notificationId, buildNotification(getString(R.string.boot_service_starting), 0))
+        // targetSdk 34：Android 14+ 必须用带类型的 startForeground（manifest 已声明 specialUse），
+        // 否则抛 MissingForegroundServiceTypeException 导致开机自启崩溃
+        val notification = buildNotification(getString(R.string.boot_service_starting), 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(notificationId, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(notificationId, notification)
+        }
 
         serviceScope.launch {
             UbuntuRuntime.start(this@BootService) { pct, msg ->

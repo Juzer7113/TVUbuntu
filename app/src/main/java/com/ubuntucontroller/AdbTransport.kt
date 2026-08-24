@@ -3,7 +3,7 @@ package com.ubuntucontroller
 import java.io.File
 
 /**
- * ADB 传输统一接口：无线 TLS 通道（AdbWirelessTransport）与传统 5555 明文通道（AdbClient）
+ * ADB 传输统一接口：无线 TLS 通道（AdbWirelessTransport）与传统 5555 明文通道（AdbClassicTransport，基于 libadb-android）
  * 都实现本接口，使 AdbProotService 的启动/探测/命令逻辑与具体传输解耦。
  */
 interface AdbTransport {
@@ -13,8 +13,8 @@ interface AdbTransport {
     /** 推送本地文件到设备远程路径，成功返回 true。 */
     fun push(local: File, remote: String, mode: String = "644"): Boolean
 
-    /** 一次性 shell 命令，返回 stdout+stderr 文本。 */
-    fun exec(cmd: String): String
+    /** 一次性 shell 命令，返回 stdout+stderr 文本；timeoutMs 控制单条命令上限（探测等短命令可传小值）。 */
+    fun exec(cmd: String, timeoutMs: Long = 120_000L): String
 
     /** 持久启动 shell 命令（proot 常驻），内部持有流；关闭 transport 时一并关闭。 */
     fun startPersistent(cmd: String, logLine: (String) -> Unit): Boolean
@@ -24,4 +24,7 @@ interface AdbTransport {
 
     /** 中断正在进行的连接。 */
     fun cancel()
+
+    /** 连接是否可用（quickExec 据此决定复用或新建）。 */
+    fun isConnected(): Boolean
 }

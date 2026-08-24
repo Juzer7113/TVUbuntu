@@ -4,13 +4,15 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.io.File
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import android.util.Log
 
 /**
  * TVUbuntu Proot-ADB 模式服务核。
@@ -46,7 +48,7 @@ object AdbProotService {
     // 无线 TLS 持久连接（优先通道）
     private var wirelessTransport: AdbWirelessTransport? = null
     // 传统通道鉴权看门狗进行中的连接，供「取消/重试」中断
-    private var pendingAuthClient: AdbClient? = null
+    private var pendingAuthClient: AdbClassicTransport? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -106,10 +108,13 @@ object AdbProotService {
 
     // ---------- 传统通道：TCP 探测 + 鉴权（弹窗/烘焙） ----------
 
-    /** 设备 adbd 是否可连通（TCP 探测，不依赖密钥授权）。 */
+    /** 设备 adbd 是否可连通（TCP 探测，不依赖密钥授权）。带连接超时，避免不可达时无限阻塞。 */
     fun isAdbReachable(context: Context): Boolean {
         return try {
-            java.net.Socket(adbHost(context), adbPort(context)).use { true }
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(adbHost(context), adbPort(context)), 5_000)
+                true
+            }
         } catch (_: Exception) {
             false
         }
@@ -130,17 +135,20 @@ object AdbProotService {
             return
         }
         if (!isAdbReachable(context)) {
-            onResult(
-                AdbAuthResult(
-                    AuthState.UNREACHABLE,
-                    "设备 adbd 不可达（${adbHost(context)}:${adbPort(context)}）。请在开发者选项开启「网络 ADB 调试」。"
+            // 不可达先尝试自愈（Root 开 5555 并重启 adbd），部分盒子 persist 被清后可用；无 root 则静默失败。
+            try { AdbNetworkEnabler.enableViaRoot(context) } catch (_: Throwable) {}
+            if (!isAdbReachable(context)) {
+                onResult(
+                    AdbAuthResult(
+                        AuthState.UNREACHABLE,
+                        "设备 adbd 不可达（${adbHost(context)}:${adbPort(context)}）。请在开发者选项开启「网络 ADB 调试」，或用「无线配对」免弹窗。"
+                    )
                 )
-            )
-            return
+                return
+            }
         }
         onResult(AdbAuthResult(AuthState.CONNECTING, "正在连接 adbd，请在盒子上点『允许 USB 调试』…"))
-        val key = AdbKeyHelper(context)
-        val adb = AdbClient(adbHost(context), adbPort(context), key)
+        val adb = AdbClassicTransport(context, adbHost(context), adbPort(context))
         pendingAuthClient = adb
         val done = AtomicBoolean(false)
         val timer = Timer()
@@ -150,11 +158,18 @@ object AdbProotService {
             }
         }, AUTH_WATCHDOG_MS)
         val result = try {
-            adb.connect(persistent = true)
+            adb.connect()
             try { adb.close() } catch (_: Exception) {} // 授权已缓存，关闭握手连接
             AdbAuthResult(AuthState.CONNECTED, "ADB 已连接并授权")
         } catch (e: Exception) {
-            AdbAuthResult(AuthState.AWAITING, "请在盒子上用遥控器点『允许 USB 调试』，然后点本按钮重试")
+            val msg = e.message ?: ""
+            // 设备要求配对（AdbPairingRequiredException 经梯子抛出）→ 返回 ERROR，
+            // 由 MainActivity.onManualAdbFailed 弹出无线配对码填写弹窗（满足「ADB 拿不到就弹配对码」）。
+            if (msg.contains("配对码") || msg.contains("需要配对")) {
+                AdbAuthResult(AuthState.ERROR, msg)
+            } else {
+                AdbAuthResult(AuthState.AWAITING, "请在盒子上用遥控器点『允许 USB 调试』，然后点本按钮重试")
+            }
         } finally {
             done.set(true)
             timer.cancel()
@@ -177,10 +192,9 @@ object AdbProotService {
      * 带看门狗的鉴权连接（传统通道）：成功返回 (client, CONNECTED)，否则 (null, 状态)。
      * adbd 不可达 → UNREACHABLE；连接上但用户未授权超时 → AWAITING。
      */
-    private fun connectWithAuthWatchdog(context: Context, timeoutMs: Long = AUTH_WATCHDOG_MS): Pair<AdbClient?, AuthState> {
+    private fun connectWithAuthWatchdog(context: Context, timeoutMs: Long = AUTH_WATCHDOG_MS): Pair<AdbClassicTransport?, AuthState> {
         if (!isAdbReachable(context)) return null to AuthState.UNREACHABLE
-        val key = AdbKeyHelper(context)
-        val adb = AdbClient(adbHost(context), adbPort(context), key)
+        val adb = AdbClassicTransport(context, adbHost(context), adbPort(context), timeoutMs)
         val done = AtomicBoolean(false)
         val timer = Timer()
         timer.schedule(object : TimerTask() {
@@ -189,7 +203,7 @@ object AdbProotService {
             }
         }, AUTH_WATCHDOG_MS)
         return try {
-            adb.connect(persistent = true)
+            adb.connect()
             adb to AuthState.CONNECTED
         } catch (e: Exception) {
             null to AuthState.AWAITING
@@ -389,6 +403,7 @@ object AdbProotService {
         }
 
         // 获取可用于启动的 transport（无线 TLS 优先 → 经典 5555 自愈+鉴权）
+        RuntimeLog.append("deploy", "获取 ADB 连接…")
         onProgress(2, "获取 ADB 连接…")
         val t = acquireTransportForLaunch(context) ?: return UbuntuService.ServiceState(
             UbuntuService.Status.ERROR,
@@ -403,49 +418,86 @@ object AdbProotService {
         t: AdbTransport,
         onProgress: (Int, String) -> Unit
     ): UbuntuService.ServiceState {
+        val logP: (Int, String) -> Unit = { p, m -> onProgress(p, m); RuntimeLog.append("deploy", m) }
         val version = UbuntuService.getUbuntuVersion(context)
         val arch = UbuntuService.rootfsArch(context)
         val prootBin = prootBinary(context)
 
-        onProgress(15, "推送 proot 二进制…")
-        if (!t.push(File(prootBin), "$REMOTE_DIR/libproot.so", "755")) {
+        // 确保远端目录存在（否则 cat 写文件会失败导致推送异常）
+        t.exec("mkdir -p $REMOTE_DIR")
+        logP(15, "推送 proot 二进制…")
+        if (!t.push(File(prootBin), "$REMOTE_DIR/libproot.so", "0755")) {
+            RuntimeLog.append("deploy", "推送 libproot.so 失败")
             return UbuntuService.ServiceState(UbuntuService.Status.ERROR, "推送 libproot.so 失败", null)
         }
-        onProgress(35, "推送 Ubuntu rootfs（约 28MB，请稍候）…")
-        if (!t.push(rootfsTar(context), "$REMOTE_DIR/ubuntu-$version-$arch.tar", "644")) {
+        logP(35, "推送 Ubuntu rootfs（约 28MB，请稍候）…")
+        if (!t.push(rootfsTar(context), "$REMOTE_DIR/ubuntu-$version-$arch.tar", "0644")) {
+            RuntimeLog.append("deploy", "推送 rootfs tar 失败")
             return UbuntuService.ServiceState(UbuntuService.Status.ERROR, "推送 rootfs tar 失败", null)
         }
-        onProgress(60, "推送启动/安装脚本…")
+        logP(60, "推送启动/安装脚本…")
         pushAsset(t, context, "install_ssh_proot.sh", "$REMOTE_DIR/install_ssh_proot.sh")
         pushAsset(t, context, "run_ubuntu_proot.sh", "$REMOTE_DIR/run_ubuntu_proot.sh")
         pushAsset(t, context, "start_proot_adb.sh", "$REMOTE_DIR/start_proot_adb.sh")
 
-        onProgress(75, "经 adb 持久启动 proot + SSH…")
+        // 权限/标签自愈 + 诊断：sync 推送的文件在部分设备上权限位或 SELinux 标签不对，
+        // 直接 `sh script` 会报 Permission denied（此前多次「无日志/卡住」的根因）。
+        // chmod 修复权限位；cp+mv 重建文件使标签变为 shell_data_file（shell 域可执行）；
+        // ls -lZ 输出真实权限与标签，供日志定位。
+        val diag = t.exec(
+            "chmod 755 $REMOTE_DIR/libproot.so $REMOTE_DIR/*.sh 2>/dev/null; " +
+                "for f in libproot.so start_proot_adb.sh run_ubuntu_proot.sh install_ssh_proot.sh; do " +
+                "cp -f $REMOTE_DIR/\$f $REMOTE_DIR/\$f.tmp 2>/dev/null && mv -f $REMOTE_DIR/\$f.tmp $REMOTE_DIR/\$f 2>/dev/null; " +
+                "chmod 755 $REMOTE_DIR/\$f 2>/dev/null; done; " +
+                "ls -lZ $REMOTE_DIR 2>/dev/null | head -20"
+        )
+        if (diag.isNotBlank()) RuntimeLog.append("deploy", "设备端文件权限/标签诊断:\n${diag.trim()}")
+
+        logP(75, "经 adb 持久启动 proot + SSH…")
         val port = UbuntuService.getProotSshPort(context)
         val password = UbuntuService.getSshPassword(context)
         val safePassword = password.replace("'", "'\\''")
         val launchCmd = "sh $REMOTE_DIR/start_proot_adb.sh $port '$safePassword' $version $arch"
-        t.startPersistent(launchCmd) { /* 设备侧日志落 $REMOTE_DIR/ubuntu.log，由 readLog 读取 */ }
+        // 设备侧 stdout（sh 解析错误 / 解压报错 / proot 启动错误等）实时记入运行时日志，
+        // 不再丢弃——ubuntu.log 为空/写入失败时也能定位「脚本到底有没有跑起来」
+        t.startPersistent(launchCmd) { line ->
+            if (line.isNotBlank()) RuntimeLog.append("proot-out", line.trim())
+        }
         transport = t
 
         // 标记：后续 detectStatus/stop/runInUbuntu 按此路由
         File(prootRoot(context), ADB_LAUNCHED_MARKER).writeText("1")
 
-        // 等待 SSH 就绪
+        // 探测一次：SSH 就绪即报成功；否则【不误报失败】——
+        // 首次启动需解压 80MB rootfs + apt 安装 SSH（1-3 分钟），期间属正常「启动中」，
+        // 详细进度一律进日志（复制日志按钮），主页只显示简洁状态
         Thread.sleep(8000)
         val probe = probeState(context)
         return when {
-            probe.running -> {
-                val sshInfo = buildSSHInfo(context, probe.sshUp)
-                val msg = if (sshInfo.isRunning) "Ubuntu 启动成功（adb 路径）"
-                else "Ubuntu 已启动（adb 路径），但 SSH 未就绪（复制日志查看详情）"
-                UbuntuService.ServiceState(UbuntuService.Status.RUNNING, msg, sshInfo)
+            probe.running && probe.sshUp -> {
+                RuntimeLog.append("deploy", "SSH 就绪：Ubuntu 启动成功（adb 路径）")
+                UbuntuService.ServiceState(
+                    UbuntuService.Status.RUNNING,
+                    "Ubuntu 已启动",
+                    buildSSHInfo(context, true)
+                )
             }
-            else -> UbuntuService.ServiceState(
-                UbuntuService.Status.RUNNING,
-                "Ubuntu 已启动（adb 路径），SSH 未就绪（复制日志查看详情）",
-                null
-            )
+            probe.running -> {
+                RuntimeLog.append("deploy", "proot 已运行，SSH 未就绪（首次安装可能需 1-3 分钟，复制日志查看进度）")
+                UbuntuService.ServiceState(
+                    UbuntuService.Status.RUNNING,
+                    "Ubuntu 启动中",
+                    buildSSHInfo(context, false)
+                )
+            }
+            else -> {
+                RuntimeLog.append("deploy", "proot 尚未探测到，正在后台启动（首次需解压 rootfs + 安装 SSH，复制日志查看进度）")
+                UbuntuService.ServiceState(
+                    UbuntuService.Status.RUNNING,
+                    "Ubuntu 启动中",
+                    null
+                )
+            }
         }
     }
 
@@ -454,7 +506,7 @@ object AdbProotService {
             context.assets.open(asset).use { ins ->
                 val tmp = File(context.cacheDir, asset)
                 tmp.outputStream().use { ins.copyTo(it) }
-                t.push(tmp, remote, "755")
+                t.push(tmp, remote, "0755")
                 tmp.delete()
             }
         } catch (e: Exception) {
@@ -471,7 +523,7 @@ object AdbProotService {
         wirelessTransport = null
         // 兜底：经传统 5555 再清一次残留进程（无线通道关闭时 proot 已随连接退出）
         try {
-            val adb = AdbClient(adbHost(context), adbPort(context), AdbKeyHelper(context))
+            val adb = AdbClassicTransport(context, adbHost(context), adbPort(context))
             adb.connect()
             adb.exec("pkill -f libproot.so 2>/dev/null; pkill -x dropbear 2>/dev/null; pkill -x sshd 2>/dev/null || true")
             adb.close()
@@ -482,12 +534,25 @@ object AdbProotService {
 
     // ---------- 状态 ----------
 
+    /** 上次记日志的探测状态（running, sshUp）；仅变化时记录，避免轮询刷屏。 */
+    private var lastLogProbe: Pair<Boolean, Boolean>? = null
+
     fun detectStatus(context: Context): UbuntuService.ServiceState {
         val probe = probeState(context)
         val sshInfo = if (probe.running) buildSSHInfo(context, probe.sshUp) else null
+        // 主页只显示简洁状态；SSH 未就绪等详细原因进日志（复制日志按钮可查）
+        val cur = probe.running to probe.sshUp
+        if (cur != lastLogProbe) {
+            RuntimeLog.append(
+                "deploy",
+                "detectStatus: running=${probe.running} sshUp=${probe.sshUp}" +
+                    if (probe.running && !probe.sshUp) "（SSH 未就绪，可能在安装或启动失败，复制日志查看）" else ""
+            )
+            lastLogProbe = cur
+        }
         val message = when {
-            probe.running && probe.sshUp -> "Ubuntu 运行中（adb 路径）"
-            probe.running -> "Ubuntu 已启动（adb 路径），但 SSH 未就绪"
+            probe.running && probe.sshUp -> "Ubuntu 运行中"
+            probe.running -> "Ubuntu 启动中"
             else -> "Ubuntu 未运行"
         }
         return UbuntuService.ServiceState(
@@ -500,30 +565,44 @@ object AdbProotService {
 
     private data class Probe(val running: Boolean, val sshUp: Boolean)
 
-    /** 经当前可用通道执行一条探测命令（无线用持久 TLS 连接，传统用新建 5555 连接）。 */
-    private fun quickExec(context: Context, cmd: String): String {
+    /** 经当前可用通道执行一条探测命令。优先复用已建立的 transport（在其连接上开新流，
+     *  毫秒级，避免每次新建 5555 连接拖慢/撞上 adbd 偶发忙）；无活动连接才新建。
+     *  探测都是短命令，超时 20s 足够，避免异常时拖死状态轮询。 */
+    private fun quickExec(context: Context, cmd: String, timeoutMs: Long = 20_000L): String {
         return try {
-            val wt = wirelessTransport
-            if (wt != null && wt.isConnected()) {
-                wt.exec(cmd)
-            } else {
-                val adb = AdbClient(adbHost(context), adbPort(context), AdbKeyHelper(context))
-                adb.connect()
-                val out = adb.exec(cmd)
-                adb.close()
-                out
+            val t = transport
+            when {
+                t != null && t.isConnected() -> t.exec(cmd, timeoutMs)
+                else -> {
+                    val wt = wirelessTransport
+                    if (wt != null && wt.isConnected()) {
+                        wt.exec(cmd, timeoutMs)
+                    } else {
+                        val adb = AdbClassicTransport(context, adbHost(context), adbPort(context))
+                        adb.connect()
+                        val out = adb.exec(cmd, timeoutMs)
+                        adb.close()
+                        out
+                    }
+                }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 失败原因写日志：否则 readLog/探测静默返回空，用户无法区分「真没日志」还是「读取失败」
+            RuntimeLog.append("adb", "quickExec 失败：${e.message}；cmd=${cmd.take(80)}")
             ""
         }
     }
 
     private fun probeState(context: Context): Probe {
+        // 注意：绝不能用 pgrep -f 匹配 "libproot.so"——执行本探测命令的 sh 自身命令行里
+        // 就含字面 "libproot.so"（来自 pgrep 参数），会误报 proot 已运行。
+        // 只用 pgrep -x 按进程名（comm）精确匹配：proot 进程 comm 即 libproot.so（<15 字符）。
+        // SSH 就绪以宿主侧 .ssh_up 内容为 "1" 为准（dropbear 起来后 echo 1；预建值为 0，防误报）。
         val out = quickExec(
             context,
-            "pgrep -f libproot.so >/dev/null 2>&1 && echo UC_PROOT; " +
-                    "pgrep -x dropbear >/dev/null 2>&1 || pgrep -x sshd >/dev/null 2>&1 && echo UC_RUN; " +
-                    "test -f $REMOTE_DIR/.ssh_up && echo UC_SSHUP"
+            "(pgrep -x libproot.so >/dev/null 2>&1) && echo UC_PROOT; " +
+                    "(pgrep -x dropbear >/dev/null 2>&1 || pgrep -x sshd >/dev/null 2>&1) && echo UC_RUN; " +
+                    "grep -q '^1$' $REMOTE_DIR/.ssh_up 2>/dev/null && echo UC_SSHUP"
         )
         return Probe(out.contains("UC_PROOT") || out.contains("UC_RUN"), out.contains("UC_SSHUP"))
     }
@@ -537,8 +616,11 @@ object AdbProotService {
         val prootBin = "$REMOTE_DIR/libproot.so"
         val resolv = "$REMOTE_DIR/resolv.conf"
         val esc = command.replace("\\", "\\\\").replace("\"", "\\\"")
+        // 与 start_proot_adb.sh 一致：PROOT_TMP_DIR 必须是【宿主绝对路径】，否则 proot 启动即崩
+        // （Android 宿主无 /tmp；f2fs probe/glue rootfs 需要可写临时目录）
         val adbCmd =
-            "$prootBin -r $rootfs -0 -w /root -b /dev -b /proc -b /sys " +
+            "export PROOT_TMP_DIR=$REMOTE_DIR/tmp; mkdir -p $REMOTE_DIR/tmp; " +
+                    "$prootBin -r $rootfs -0 -w /root -b /dev -b /proc -b /sys " +
                     "-b $resolv:/etc/resolv.conf " +
                     "/bin/bash -c \"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $esc\""
         return try {
@@ -552,22 +634,46 @@ object AdbProotService {
     // ---------- 日志 ----------
 
     fun readLog(context: Context): String {
-        return try {
-            val out = quickExec(context, "cat $REMOTE_DIR/ubuntu.log 2>/dev/null || echo '(无日志文件)'")
-            out.trim().ifBlank { "(无日志内容)" }
-        } catch (e: Exception) {
-            "(读取 adb 日志失败: ${e.message})"
+        var out = quickExec(context, "cat $REMOTE_DIR/ubuntu.log 2>/dev/null || echo '(无日志文件)'")
+        if (out.isBlank()) {
+            // 可能撞上 adbd 忙（安装期 CPU 高 / 并发 shell），重试一次再下结论
+            out = quickExec(context, "cat $REMOTE_DIR/ubuntu.log 2>/dev/null || echo '(无日志文件)'")
+            if (out.isBlank()) {
+                RuntimeLog.append("adb", "readLog 两次读取均为空（adb 忙或日志文件为空）")
+                return "(读取失败：adb 忙或日志为空，请稍后重试)"
+            }
         }
+        return out.trim().ifBlank { "(无日志内容)" }
     }
 
     private fun buildSSHInfo(context: Context, sshUp: Boolean): UbuntuService.SSHInfo {
         return UbuntuService.SSHInfo(
-            host = "127.0.0.1（本机 adb forward）",
+            host = localIpAddress(),   // 真实本机局域网 IP（如 172.16.2.8），非 127.0.0.1
             port = UbuntuService.getProotSshPort(context),
             username = UbuntuService.getSshUser(context),
             password = UbuntuService.getSshPassword(context),
             isRunning = sshUp
         )
+    }
+
+    /** 获取本机非回环 IPv4 地址（SSH 客户端真实可达地址，如 172.16.2.8）。 */
+    private fun localIpAddress(): String {
+        try {
+            val nis = NetworkInterface.getNetworkInterfaces() ?: return "127.0.0.1"
+            while (nis.hasMoreElements()) {
+                val ni = nis.nextElement()
+                if (ni.isLoopback || !ni.isUp) continue
+                val addrs = ni.inetAddresses ?: continue
+                while (addrs.hasMoreElements()) {
+                    val a = addrs.nextElement()
+                    if (a is Inet4Address && !a.isLoopbackAddress) {
+                        return a.hostAddress ?: continue
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return "127.0.0.1"
     }
 
     /** 是否由 adb 路径启动（标记存在）。 */

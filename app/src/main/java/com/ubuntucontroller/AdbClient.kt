@@ -3,6 +3,7 @@ package com.ubuntucontroller
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -32,6 +33,10 @@ class AdbClient(
         private const val VERSION = 0x01000000
         private const val MAX_PAYLOAD = 256 * 1024
         private const val INITIAL_AUTH_TIMEOUT_MS = 10_000
+        /** TCP 连接建立阶段超时：避免设备 adbd 未监听 / 端口被静默丢弃时 Socket 构造无限阻塞（曾导致「一直在等弹窗但设备不弹窗」的假死）。 */
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        /** persistent 模式授权等待总超时封顶：默认无限等会让 TV 盒子（弹窗不显示）永久假死，这里给 60s 上限。 */
+        private const val AUTH_TOTAL_TIMEOUT_MS = 60_000
         private const val AUTH_TOKEN = 1
         private const val AUTH_SIGNATURE = 2
         private const val AUTH_PUBKEY = 3
@@ -88,7 +93,9 @@ class AdbClient(
      *      超时未收到 AUTH_TOKEN 即判定免认证，直接视为已连接（这是此前「卡在连接中」的根因）。
      */
     fun connect(persistent: Boolean = false) {
-        val s = Socket(host, port)
+        val s = Socket()
+        // 先建立 TCP 连接并加超时：防止设备不可达 / 端口被防火墙静默丢弃时无限阻塞。
+        s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         // 握手阶段短超时：用于侦测设备是否发 AUTH_TOKEN（区分认证开/关）。
         // 真机 TV 盒子的 adbd 有时比模拟器慢，窗口太短会错过 AUTH_TOKEN，导致授权弹窗无法触发。
         s.soTimeout = INITIAL_AUTH_TIMEOUT_MS
@@ -111,7 +118,8 @@ class AdbClient(
         }
 
         // -- 阶段二：需要鉴权（auth-on），阻塞等待用户授权。
-        s.soTimeout = if (persistent) 0 else 20_000
+        // persistent 模式也给一个总超时封顶（原本为 0=无限等，会让 TV 盒子弹窗不显示时永久假死）。
+        s.soTimeout = if (persistent) AUTH_TOTAL_TIMEOUT_MS else 20_000
         var authed = false
         var sentSignature = false
         var m: AdbMessage? = first
@@ -152,12 +160,15 @@ class AdbClient(
         connect(false)
     }
 
-    /** 一次性 shell 命令，返回 stdout+stderr 文本。 */
-    override fun exec(command: String): String {
+    /** 一次性 shell 命令，返回 stdout+stderr 文本。（废弃类，仅对齐 AdbTransport 接口签名；timeoutMs 未启用） */
+    override fun exec(command: String, timeoutMs: Long): String {
         val stream = openStream()
         writeMessage(CMD_OPEN, localId, 0, "shell:$command".toByteArray(Charsets.UTF_8))
         return readUntilClose(stream, background = false).first
     }
+
+    /** 废弃类不再作为传输通道使用，恒返回 false（对齐接口签名）。 */
+    override fun isConnected(): Boolean = false
 
     /** 推送本地文件到设备远程路径（shell:cat> 流式写 stdin）。带 adb 窗口流控。 */
     override fun push(local: File, remote: String, mode: String): Boolean {

@@ -13,7 +13,7 @@
 [![Language](https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Min SDK](https://img.shields.io/badge/min%20SDK-21%20(Android%205.0)-34A853)](https://developer.android.com/about/versions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.2-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
+[![APK](https://img.shields.io/badge/APK-TVUbuntu%201.5.3-orange)](https://github.com/jiyanlin7113-rgb/TVUbuntu/releases)
 
 ---
 
@@ -99,7 +99,7 @@ Most TV boxes are **wasted silicon** — sitting idle, running ad-riddled launch
 ```
 TVUbuntu/
 ├── app/
-│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.5.2
+│   ├── build.gradle.kts                 # App module: minSdk 21, version 1.5.3
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml          # TV Leanback launcher + boot receiver + ADB accessibility service
@@ -115,13 +115,17 @@ TVUbuntu/
 │       │   ├── UbuntuService.kt         # core logic: rootfs, arch, status, SSH info, ADB host/port
 │       │   ├── ShellExecutor.kt         # root shell executor (su auto-detect)
 │       │   ├── BootReceiver.kt          # auto-launch on device boot
-│       │   ├── AdbClient.kt             # pure-Kotlin ADB client (CNXN/AUTH, RSA via AndroidKeyStore)
+│       │   ├── AdbTransport.kt          # ADB transport interface (classic TCP + wireless TLS)
+│       │   ├── AdbClassicTransport.kt   # classic TCP 5555 via libadb (auth ladder)
+│       │   ├── AdbWirelessTransport.kt / AdbWirelessPairing.kt  # wireless TLS pairing/transport
+│       │   ├── AdbSyncPush.kt           # sync-protocol push (official adb push channel)
 │       │   ├── AdbProotService.kt       # proot-over-ADB orchestration (key, push, launch, stop)
-│       │   ├── AdbAutoAcquire.kt         # auto-acquire ADB on app launch & boot
+│       │   ├── AdbAutoAcquire.kt        # auto-acquire ADB on app launch & boot
 │       │   ├── AdbAuthAutoClickService.kt / AdbAccessibilityHelper.kt  # auto-click USB-debug dialogs
 │       │   ├── AdbNetworkEnabler.kt     # self-heal net ADB (setprop + restart adbd)
-│       │   ├── UbuntuAdbManager.kt / AdbTransport.kt / AdbWirelessPairing.kt / AdbWirelessTransport.kt
-│       │   ├── AdbKeyStore.kt           # ADB RSA key in AndroidKeyStore
+│       │   ├── UbuntuAdbManager.kt / AdbKeyStore.kt   # libadb connection manager / RSA key
+│       │   ├── RuntimeLog.kt            # in-app runtime log (memory ring + rolling file)
+│       │   ├── UbuntuApp.kt             # Application: RuntimeLog init on every entry
 │       │   └── TvFocusUtils.kt          # D-Pad focus helpers (TV cursor)
 │       └── res/                         # layouts, drawables, strings, colors, themes, xml/
 ├── scripts/                             # gen_adb_pubkey.py / bake_adb_keys.sh (bake App pubkey into firmware)
@@ -265,6 +269,18 @@ mysql -u root                   # MariaDB (unix_socket auth)
 ---
 
 ## 📝 Changelog
+
+### v1.5.3
+- **Rock-solid Proot-over-ADB launch path — the ADB path now works end-to-end on locked-down, no-root boxes.**
+  - Classic TCP 5555 channel rebuilt on **`libadb-android`** (`AdbClassicTransport`, same lib as the wireless channel), replicating the reference app-manager's auth ladder (direct connect → `autoConnect` → pairing-code prompt → root `setprop service.adb.tcp.port` + `ctl.restart adbd` → reconnect).
+  - File push switched to the official **ADB sync protocol** (`AdbSyncPush`: SEND/DATA/DONE/OKAY). The old `shell:cat` pipe got stuck forever on many adbd versions — PTY term rules eat binary bytes and `CLSE` doesn't always deliver stdin EOF to `cat`.
+  - Post-push **permission/SELinux self-heal**: `chmod 755` + `cp/mv` rebuild (files get `shell_data_file` type) + `ls -lZ` diagnostics in the log — fixes `sh script: Permission denied`.
+  - **`PROOT_TMP_DIR` must be a host absolute path**; rootfs key dirs (`tmp`/`var/tmp`/`run`/…) are now created too — fixes `can't canonicalize /tmp` that crashed proot at startup.
+  - SSH-ready marker `.ssh_up` now uses content `0`/`1` (dropbear writes `1`), so readiness is real; probing uses `pgrep -x` (exact process name) and **reuses the established transport** with 20s timeouts.
+  - Progress bar reaches **100% only when SSH is truly ready**; first-install timeout raised to **5 minutes** (rootfs extract + apt dropbear can exceed 3).
+  - New in-app runtime log (`RuntimeLog`) records every deploy step and device-side stdout (`[proot-out]`); **Copy Log** merges runtime + device `ubuntu.log`.
+  - Home status simplified; the SSH card shows the **real LAN IP**:port.
+- **Version bump** to `1.5.3` (versionCode 18).
 
 ### v1.5.2
 - **Custom ADB host & port + persistent network ADB toggle.** The ADB host/port fields in Settings are now actually used: the old one-shot "Network ADB self-heal" button is replaced by a persistent **toggle**. When enabled, the App switches `adbd` to your configured host:port via `setprop service.adb.tcp.port <port>` + `setprop persist.adb.tcp.port <port>` + `ctl.restart adbd` on **every app launch and on boot** (in `MainActivity` and `AdbBootReceiver`), so your PC can always `adb connect <host>:<port>` without re-enabling USB debugging. The port is no longer hardcoded to 5555 — `AdbNetworkEnabler.enableViaRoot/enableViaAdb` now read the configured values, with `enable()` as a one-call Root-then-ADB helper.

@@ -46,12 +46,27 @@ if [ -d /pkgs ]; then
   say "uutils coreutils 修复完成（替换 $FIXED 个 symlink）；mkdir -> $(readlink /usr/bin/mkdir 2>/dev/null || echo '?')"
 fi
 
-# 关键目录兜底
+# 关键目录兜底（目录已存在时 File exists 属正常，吞掉 stderr 避免日志噪音）
 mkdir -p /tmp /var/tmp /run/sshd /run/lock /usr/local /etc/ssh /etc/apt /etc/apt/sources.list.d \
-         /var/lib/apt/lists/partial /var/cache/apt/archives/partial
+         /var/lib/apt/lists/partial /var/cache/apt/archives/partial 2>/dev/null
 chmod 1777 /tmp /var/tmp /run/lock 2>/dev/null
 chmod 755 /run 2>/dev/null
 say "关键路径检查: /tmp=$(test -d /tmp && echo OK || echo MISS) /etc/apt=$(test -d /etc/apt && echo OK || echo MISS) apt-get=$(test -x /usr/bin/apt-get && echo OK || echo MISS)"
+
+# 已安装检测：dropbear/sshd 已存在（含纯 proot 路径装过、或上次安装已成功）→ 跳过 apt。
+# 关键：避免慢网络下重复 apt update 拖死启动（本次「启动超时」的根因之一）。
+if command -v dropbear >/dev/null 2>&1 || [ -x /usr/sbin/dropbear ] || \
+   [ -x /usr/bin/dropbear ] || [ -x /usr/sbin/dropbearmulti ] || [ -x /usr/sbin/sshd ]; then
+  say "检测到 SSH 服务已安装（dropbear/sshd 存在），跳过 apt 安装"
+  # 密码仍校准一次（幂等，保证 dropbear 登录可用）
+  if [ -n "$SSH_PASS" ]; then
+    if echo "root:$SSH_PASS" | chpasswd >> "$HOSTLOG" 2>&1; then
+      touch /etc/.ssh_password_initialized 2>/dev/null
+      say "root 密码已校准"
+    fi
+  fi
+  exit 0
+fi
 
 # 根据架构选择 apt 源
 # 注意：必须用 start_proot.sh 正确导出的 $MARCH（amd64->x86_64 / arm64->aarch64），
@@ -70,7 +85,9 @@ case "$MARCH" in
     ;;
 esac
 
-APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::ftp::Timeout=30 -o Acquire::Retries=2"
+# 慢网络友好：单次请求超时 12s、重试 1 次——快速失败换源，避免在不可达源上干等
+# （此前 30s×Retries2×3源×3套件最坏可超 5 分钟，正是「启动超时」的根因）。
+APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::http::Timeout=12 -o Acquire::https::Timeout=12 -o Acquire::ftp::Timeout=12 -o Acquire::Retries=1"
 
 write_sources() {
   local base="$1"
@@ -86,7 +103,7 @@ say "清理 apt/dpkg 锁与残留源"
 rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* 2>/dev/null
 rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* 2>/dev/null
 rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null
-mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /run/sshd
+mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial /run/sshd 2>/dev/null
 
 say "dpkg --configure -a"
 dpkg --configure -a >> "$HOSTLOG" 2>&1
@@ -121,9 +138,11 @@ fi
 # 本 proot 构建未拦截 statx，临时文件路径未被翻译而报 "No such file or directory"，postinst 因此非零退出。
 # 但软件包文件已解包（/usr/sbin/sshd、ssh-keygen 已存在），主机密钥与 sshd_config 由下方手动补完，
 # 故此处容忍安装返回非 0，不致命；脚本末尾还会把 dpkg 半配置状态修复为 installed(ii)，消除中断提示。
+# 注意：只装 SSH 必需的最小集（dropbear 供 proot 监听、openssh-server 复用其 sftp-server/客户端）。
+# 不要加 vim/htop/git/wget 等大包——慢网络下每多一个包都显著拉长安装时间（「启动超时」的直接诱因），
+# 用户可在 runInUbuntu 命令控制台里按需自装。
 if ! apt-get install -y --no-install-recommends openssh-server dropbear \
-    curl wget git vim htop nano sudo unzip ca-certificates \
-    iproute2 net-tools sysvinit-utils $APT_OPTS >> "$HOSTLOG" 2>&1; then
+    sudo ca-certificates iproute2 net-tools sysvinit-utils $APT_OPTS >> "$HOSTLOG" 2>&1; then
   say "WARNING: apt-get install 返回非 0（proot 下 openssh-server postinst 常见，继续手动收尾 sshd）"
 fi
 

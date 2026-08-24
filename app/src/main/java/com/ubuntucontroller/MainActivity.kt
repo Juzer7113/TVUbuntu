@@ -94,14 +94,31 @@ class MainActivity : AppCompatActivity() {
     // 复制完整运行日志到剪贴板，并落盘到外部存储，便于直接分享 / adb 拉取
     private fun copyLog() {
         lifecycleScope.launch {
-            val log = withContext(Dispatchers.IO) {
-                UbuntuRuntime.readLog(this@MainActivity)
+            // 应用内运行时日志（记录启动/ADB获取/推送/启动每步）+ 设备侧 ubuntu.log 合并导出。
+            // 即使卡在「推送 proot 二进制」阶段（设备日志尚未生成），运行时日志也已记录卡点，可定位问题。
+            val runtime = withContext(Dispatchers.IO) { RuntimeLog.getLog() }
+            val device = withContext(Dispatchers.IO) {
+                runCatching { UbuntuRuntime.readLog(this@MainActivity) }.getOrDefault("(读取设备日志失败)")
             }
-            if (log.isEmpty() || log == "(无日志内容)" || log == "(无日志文件)") {
+            val log = buildString {
+                append("# ===== TVUbuntu 运行时日志（应用内步骤） =====\n")
+                append(runtime.ifBlank { "(无应用内日志)" })
+                append("\n\n# ===== 设备 ubuntu.log =====\n")
+                // 空日志给出明确解释：ubuntu.log 由 proot 启动后期脚本生成，启动早期为空属正常
+                val deviceDisplay = when (device) {
+                    "(无日志文件)" -> "（尚未生成：proot 启动脚本可能未执行或正在启动，请以【应用内日志】为准）"
+                    "(无日志内容)" -> "（为空：proot 正在启动或尚未写入日志，请以【应用内日志】为准）"
+                    else -> device
+                }
+                append(deviceDisplay)
+            }
+            if (runtime.isBlank() &&
+                (device == "(无日志内容)" || device == "(无日志文件)" || device == "(读取设备日志失败)")
+            ) {
                 Toast.makeText(this@MainActivity, getString(R.string.log_empty), Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            // 1) 复制到剪贴板（整份日志，含 [proot-inner] 段，未截断）
+            // 1) 复制到剪贴板（整份日志，未截断）
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("ubuntu_log", log))
             // 2) 同时落盘到外部存储（应用私有外部目录，无需授权），方便分享 / adb pull
@@ -109,7 +126,7 @@ class MainActivity : AppCompatActivity() {
             var savedPath: String? = null
             if (extDir != null) {
                 try {
-                    val f = java.io.File(extDir, "ubuntu_proot_log.txt")
+                    val f = java.io.File(extDir, "ubuntu_full_log.txt")
                     f.writeText(log)
                     savedPath = f.absolutePath
                 } catch (_: Exception) {
@@ -131,6 +148,8 @@ class MainActivity : AppCompatActivity() {
     private var terminalActive = false
     private val commandHistory = mutableListOf<String>()
     private var historyIndex = -1
+    // 防「互抢」：自动启动流程（onDone 回调 + 20s 兜底）只准触发一次 proot，避免双开。
+    private var autoStartTriggered = false
 
     private fun setupTerminal() {
         prompt = "${UbuntuService.getSshUser(this)}@ubuntu:~$ "
@@ -315,11 +334,53 @@ class MainActivity : AppCompatActivity() {
         binding.pbInstall.progress = 0
         updateStatus(UbuntuService.Status.STARTING, getString(R.string.status_installing), "")
         lifecycleScope.launch {
-            val state = withContext(Dispatchers.IO) {
+            var state = withContext(Dispatchers.IO) {
                 UbuntuRuntime.start(this@MainActivity) { pct, msg ->
                     runOnUiThread {
                         binding.pbInstall.progress = pct
                         binding.tvProgress.text = msg
+                    }
+                }
+            }
+            // 部署返回后若 SSH 尚未就绪（proot 解压/首次安装 SSH 需几分钟，24.04 全新安装
+            // 甚至超过 3 分钟）：进度条保持可见并后台持续探测，直到「完全启动(SSH 就绪)」
+            // 进度才到 100%；超时仍未就绪则正常报错（写日志 + 主页 ERROR），绝不留在「启动中」。
+            if (state.status == UbuntuService.Status.RUNNING && state.sshInfo?.isRunning != true) {
+                // 5 分钟上限：首次安装需解压 rootfs + apt 装 dropbear，网络差时可能超过 3 分钟
+                val deadline = System.currentTimeMillis() + 300_000L
+                var pct = 80
+                while (System.currentTimeMillis() < deadline) {
+                    delay(10_000)
+                    state = withContext(Dispatchers.IO) {
+                        UbuntuRuntime.detectStatus(this@MainActivity)
+                    }
+                    if (state.sshInfo?.isRunning == true) break
+                    if (state.status == UbuntuService.Status.ERROR) break
+                    // 未完全启动前进度条永不提前到 100
+                    pct = (pct + 2).coerceAtMost(99)
+                    binding.pbInstall.progress = pct
+                    binding.tvProgress.text = getString(R.string.status_installing)
+                }
+                if (state.sshInfo?.isRunning == true) {
+                    binding.pbInstall.progress = 100
+                } else if (state.status != UbuntuService.Status.ERROR) {
+                    if (state.status == UbuntuService.Status.STOPPED) {
+                        // proot 也没跑 → 真失败（启动进程退出/脚本报错），正常报错
+                        RuntimeLog.append("deploy", "启动超时：5 分钟内 SSH 未就绪且 proot 未运行（可能在首次安装或网络受限），请复制日志查看设备侧错误")
+                        state = UbuntuService.ServiceState(
+                            UbuntuService.Status.ERROR,
+                            "Ubuntu 启动超时：SSH 未就绪（复制日志查看原因）",
+                            state.sshInfo
+                        )
+                    } else {
+                        // proot 仍在运行但 SSH 未就绪：apt 安装可能因网络慢仍在进行，
+                        // 不误报失败——保持「启动中」，提示用户复制日志查看（由下次探测/刷新收敛）
+                        RuntimeLog.append("deploy", "超过 5 分钟 SSH 仍未就绪，但 proot 仍在运行（apt 安装可能受网络影响仍在进行），保持启动中状态")
+                        state = UbuntuService.ServiceState(
+                            UbuntuService.Status.RUNNING,
+                            "Ubuntu 启动中（安装可能仍在进行，复制日志查看进度）",
+                            state.sshInfo
+                        )
                     }
                 }
             }
@@ -395,15 +456,22 @@ class MainActivity : AppCompatActivity() {
                         adbAcquireDone = true
                         onAdbAutoAcquireDone(res)
                         // ADB 获取完毕（无论成败）才自启 —— 保证「先有 ADB，再启动」
-                        if (shouldAutoStart && !isFinishing) triggerStart()
+                        // 仅首个触发者生效（autoStartTriggered 防护，杜绝 onDone 与 20s 兜底双开）。
+                        if (shouldAutoStart && !isFinishing && !autoStartTriggered) {
+                            autoStartTriggered = true
+                            triggerStart()
+                        }
                     }
                 )
                 // 兜底：ADB 获取较慢（如等手动点允许）时，最多等 20s 仍以纯 proot 拉起，
-                // 绝不卡死；若 20s 内 ADB 已就绪，上面 onDone 已先拉起，这里跳过。
+                // 绝不卡死；若 20s 内 ADB 已就绪，上面 onDone 已先拉起（autoStartTriggered 已置），这里跳过。
                 if (shouldAutoStart) {
                     lifecycleScope.launch {
                         delay(20_000)
-                        if (!adbAcquireDone && !isFinishing) triggerStart()
+                        if (!adbAcquireDone && !isFinishing && !autoStartTriggered) {
+                            autoStartTriggered = true
+                            triggerStart()
+                        }
                     }
                 }
             } else if (shouldAutoStart) {

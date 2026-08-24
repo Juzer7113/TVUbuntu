@@ -34,7 +34,14 @@ fi
 # 环境变量兜底默认值（正常情况由宿主 export 传入）
 PORT="${PORT:-8022}"
 CODENAME="${CODENAME:-jammy}"
-APT_BASE="${APT_BASE:-http://mirrors.tuna.tsinghua.edu.cn/ubuntu}"
+# APT_BASE 由宿主 start_proot_adb.sh 按架构导出（arm 走 ubuntu-ports，否则 apt 404）；
+# 此处仅兜底：未传入时按 MARCH 选择 tuna 源。
+if [ -z "$APT_BASE" ]; then
+  case "$MARCH" in
+    x86_64) APT_BASE="http://mirrors.tuna.tsinghua.edu.cn/ubuntu" ;;
+    *)      APT_BASE="http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports" ;;
+  esac
+fi
 
 # 探针：在重定向之前先打一行到 /hostlog（已 bind 到宿主 ubuntu.log），
 # 用于确认 proot 是否真正进入 bash；即便后续重定向失败，这一行也已在主日志中。
@@ -50,19 +57,44 @@ echo "[proot-inner] dropbear 版本: $(dropbear -h 2>&1 | head -1)"
 mkdir -p /etc/dropbear /run/sshd
 chmod 700 /etc/dropbear 2>/dev/null
 
-# 若 dropbear 缺失，补装（proot 下 openssh-server 半配置不影响 dropbear）
+# 若 dropbear 缺失，补装（proot 下 openssh-server 半配置不影响 dropbear）。
+# 三源回退（与 install_ssh_proot.sh 一致）：tuna → aliyun → official，均按架构选 ports/ubuntu。
 if ! command -v dropbear >/dev/null 2>&1; then
   echo "[proot-inner] 未找到 dropbear，尝试 apt 安装（fallback）..."
   export DEBIAN_FRONTEND=noninteractive
   export DEBCONF_NONINTERACTIVE_SEEN=true
-  [ -s /etc/apt/sources.list ] || cat > /etc/apt/sources.list <<EOF
-deb ${APT_BASE} ${CODENAME} main restricted universe multiverse
-deb ${APT_BASE} ${CODENAME}-updates main restricted universe multiverse
-deb ${APT_BASE} ${CODENAME}-security main restricted universe multiverse
+  case "$MARCH" in
+    x86_64)
+      M_TUNA="http://mirrors.tuna.tsinghua.edu.cn/ubuntu"
+      M_ALIYUN="http://mirrors.aliyun.com/ubuntu"
+      M_OFFICIAL="http://archive.ubuntu.com/ubuntu"
+      ;;
+    *)
+      M_TUNA="http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports"
+      M_ALIYUN="http://mirrors.aliyun.com/ubuntu-ports"
+      M_OFFICIAL="http://ports.ubuntu.com/ubuntu-ports"
+      ;;
+  esac
+  APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::Check-Valid-Until=false -o Acquire::http::Timeout=12 -o Acquire::https::Timeout=12 -o Acquire::Retries=1"
+  for MIRROR in "$M_TUNA" "$M_ALIYUN" "$M_OFFICIAL"; do
+    cat > /etc/apt/sources.list <<EOF
+deb ${MIRROR} ${CODENAME} main restricted universe multiverse
+deb ${MIRROR} ${CODENAME}-updates main restricted universe multiverse
+deb ${MIRROR} ${CODENAME}-security main restricted universe multiverse
 EOF
-  rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null
-  apt-get update -y 2>&1 | tail -3
-  apt-get install -y --no-install-recommends dropbear 2>&1 | tail -8
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null
+    echo "[proot-inner]   apt 源回退：$MIRROR"
+    if apt-get update -y $APT_OPTS >> /hostlog 2>&1; then
+      if apt-get install -y --no-install-recommends dropbear $APT_OPTS >> /hostlog 2>&1; then
+        echo "[proot-inner]   dropbear 安装成功（源：$MIRROR）"
+        break
+      else
+        echo "[proot-inner]   dropbear 安装失败，换源重试"
+      fi
+    else
+      echo "[proot-inner]   apt update 失败，换源重试"
+    fi
+  done
 fi
 
 # 生成 dropbear 主机密钥（缺失才生成，best-effort）。
@@ -158,6 +190,7 @@ start_dropbear() {
   sleep 2
   if pgrep -x dropbear >/dev/null 2>&1; then
     echo "[proot-inner] dropbear 启动成功 pid=$(pgrep -x dropbear | tr '\n' ' ')"
+    echo 1 > /hostsshup 2>/dev/null || true   # 通知宿主：SSH 已就绪（App 探测 .ssh_up == 1）
     return 0
   fi
   echo "[proot-inner] dropbear 未就绪"
@@ -184,6 +217,7 @@ while [ $i -lt 10 ]; do
   start_dropbear
   if pgrep -x dropbear >/dev/null 2>&1; then
     echo "[proot-inner] dropbear 已在运行 pid=$(pgrep -x dropbear | tr '\n' ' ')"
+    echo 1 > /hostsshup 2>/dev/null || true   # 通知宿主：SSH 已就绪（App 探测 .ssh_up == 1）
     break
   fi
   if [ $i -eq 0 ]; then diag_dropbear; fi

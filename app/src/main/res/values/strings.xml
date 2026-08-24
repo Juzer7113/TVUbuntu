@@ -67,7 +67,7 @@
     <string name="btn_adb_short">无ADB</string>
     <string name="adb_ready">ADB就绪</string>
     <string name="adb_no_adb">无ADB</string>
-    <string name="adb_idle">ADB：未连接（点此申请授权）</string>
+    <string name="adb_idle">ADB：未连接</string>
     <string name="adb_connecting">ADB：连接中，请在盒子上点「允许 USB 调试」…</string>
     <string name="adb_unreachable">ADB：设备不可达，请开启「网络 ADB 调试」</string>
     <string name="adb_awaiting">ADB：待授权，请用遥控器点「允许 USB 调试」后点本按钮重试</string>

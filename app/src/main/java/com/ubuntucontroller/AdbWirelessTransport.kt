@@ -10,7 +10,10 @@ import java.io.File
  *
  * 连接由 AdbWirelessPairing 经 mDNS + TLS 配对成功后建立，这里只负责在其上跑
  * shell 命令 / 推送文件 / 常驻启动 proot。读写基于 AdbStream 的
- * openInputStream()/openOutputStream()，与 AdbClient 的 shell:cat 管道思路一致。
+ * openInputStream()/openOutputStream()。
+ *
+ * 推送走 ADB sync 协议（SEND/DATA/DONE/OKAY，见 AdbSyncPush.kt）——官方 adb push 通道，
+ * 二进制安全、完成握手明确，与 AdbClassicTransport 保持一致，不用 shell,raw:cat。
  */
 class AdbWirelessTransport(private val conn: AdbConnection) : AdbTransport {
 
@@ -22,59 +25,41 @@ class AdbWirelessTransport(private val conn: AdbConnection) : AdbTransport {
     }
 
     override fun push(local: File, remote: String, mode: String): Boolean {
-        val cmd = "shell:cat - > '$remote' && chmod $mode '$remote'; echo __UC_PUSH_DONE__"
-        val stream = conn.open(cmd)
-        val outs = stream.openOutputStream()
-        val ins = stream.openInputStream()
-        try {
-            local.inputStream().use { fis ->
-                val buf = ByteArray(64 * 1024)
-                var read: Int
-                while (fis.read(buf).also { read = it } != -1) {
-                    outs.write(buf, 0, read)
-                }
-                outs.flush()
-            }
-            // 关闭输出 → 设备侧 cat 读到 EOF → 执行 chmod + 回显 MARKER
-            outs.close()
-            val out = StringBuilder()
-            val b = ByteArray(8192)
-            var r: Int
-            while (ins.read(b).also { r = it } != -1) {
-                out.append(String(b, 0, r, Charsets.UTF_8))
-            }
-            return out.contains("__UC_PUSH_DONE__")
-        } catch (e: Exception) {
-            Log.e("AdbWirelessTransport", "push 失败: ${e.message}")
-            return false
-        } finally {
-            try { stream.close() } catch (_: Exception) {}
-        }
+        // sync 协议（SEND/DATA/DONE/OKAY）——官方 adb push 通道，二进制安全、有明确完成握手。
+        // 不用 shell,raw:cat：CLSE 在部分 Android 版本不会让 cat 的 stdin 收到 EOF，导致永久卡死。
+        return conn.pushSync(local, remote, mode)
     }
 
-    override fun exec(cmd: String): String {
-        val stream = conn.open("shell:$cmd")
-        val ins = stream.openInputStream()
+    override fun exec(cmd: String, timeoutMs: Long): String {
         val out = StringBuilder()
-        val b = ByteArray(8192)
-        val deadline = System.currentTimeMillis() + 120_000L
-        return try {
-            var r: Int
-            while (System.currentTimeMillis() < deadline) {
-                r = ins.read(b)
-                if (r == -1) break
-                out.append(String(b, 0, r, Charsets.UTF_8))
+        val worker = Thread {
+            try {
+                val stream = conn.open("shell:$cmd")
+                val ins = stream.openInputStream()
+                val b = ByteArray(8192)
+                var r: Int
+                while (ins.read(b).also { r = it } != -1) {
+                    out.append(String(b, 0, r, Charsets.UTF_8))
+                }
+                try { stream.close() } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e("AdbWirelessTransport", "exec 失败: ${e.message}")
             }
-            out.toString()
-        } catch (e: Exception) {
-            out.toString()
-        } finally {
-            try { stream.close() } catch (_: Exception) {}
         }
+        worker.start()
+        worker.join(timeoutMs)
+        if (worker.isAlive) {
+            RuntimeLog.append("adb", "exec(无线) 超时（${timeoutMs / 1000}s）：cmd=${cmd.take(160)}")
+            try { cancel() } catch (_: Exception) {}
+            try { worker.join(2000) } catch (_: Exception) {}
+        }
+        return out.toString()
     }
 
     override fun startPersistent(cmd: String, logLine: (String) -> Unit): Boolean {
-        val stream = conn.open("shell:$cmd")
+        RuntimeLog.append("adb", "startPersistent(无线)：cmd=${cmd.take(160)}")
+        // shell,raw: 关闭 PTY，避免 PTY 会话残留拖住 adbd shell 服务（与经典通道一致）
+        val stream = conn.open("shell,raw:$cmd")
         val ins = stream.openInputStream()
         persistentStream = stream
         val reader = Thread {
@@ -104,5 +89,5 @@ class AdbWirelessTransport(private val conn: AdbConnection) : AdbTransport {
         try { conn.close() } catch (_: Exception) {}
     }
 
-    fun isConnected(): Boolean = conn.isConnected()
+    override fun isConnected(): Boolean = conn.isConnected()
 }

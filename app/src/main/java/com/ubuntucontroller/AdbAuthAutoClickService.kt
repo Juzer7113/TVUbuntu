@@ -2,6 +2,7 @@ package com.ubuntucontroller
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
@@ -34,6 +35,20 @@ class AdbAuthAutoClickService : AccessibilityService() {
         private val WINDOW_KEYWORDS = listOf(
             "USB 调试", "USB调试", "无线调试", "OTG", "USB 设备", "USB设备"
         )
+
+        /**
+         * 自动点击冷却时间（ms）。
+         *
+         * 必须存在：performAction(ACTION_CLICK) 会让按钮 pressed/焦点变化并触发
+         * TYPE_WINDOW_CONTENT_CHANGED，若不节流会形成「点击→事件→再点击」的自触发死循环，
+         * 刷爆 UI 线程并抢走遥控器焦点（真机实测：循环点授权框、人工无法操作、也点不到最终确认）。
+         * 冷却期内一律忽略窗口事件；授权流程出现二次确认框（如「始终允许」）时，新的
+         * WINDOW_STATE_CHANGED 会在冷却结束后正常触发下一次点击。
+         */
+        private const val CLICK_COOLDOWN_MS = 4000L
+
+        @Volatile
+        private var lastClickTime = 0L
     }
 
     override fun onServiceConnected() {
@@ -54,6 +69,9 @@ class AdbAuthAutoClickService : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
+        // 冷却期：上一次自动点击后短时间内不再动作——切断「点击→内容变化→再点击」自触发死循环，
+        // 同时留出人工介入窗口（遥控器仍可操作授权框）
+        if (SystemClock.elapsedRealtime() - lastClickTime < CLICK_COOLDOWN_MS) return
         val root = rootInActiveWindow ?: return
         try {
             handle(root)
@@ -76,7 +94,12 @@ class AdbAuthAutoClickService : AccessibilityService() {
 
         // 3) 找「确认」按钮并点击（精确匹配确认类文本，绝不点取消/拒绝）
         val target = findConfirmButton(root) ?: return
-        target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (clicked) {
+            // 点击成功才进冷却；失败则等下一次窗口事件自然重试（不主动刷事件，避免风暴）
+            lastClickTime = SystemClock.elapsedRealtime()
+            RuntimeLog.append("adb", "已自动点击 ADB 授权确认按钮")
+        }
         target.recycle()
     }
 

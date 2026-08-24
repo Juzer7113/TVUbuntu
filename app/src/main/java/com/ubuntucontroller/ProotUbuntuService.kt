@@ -200,22 +200,21 @@ object ProotUbuntuService {
         // ---- 启动顺序：优先复用已获取的 ADB；拿不到才走纯 proot（绝不重新获取 ADB）----
         // ADB 由「获取 ADB」按钮 / 开软件自动获取 事先拿到（用户已点过），
         // 启动时不重新获取（不弹无障碍、不重配对、不长期等授权），只复用已建立的连接。
-        if (AdbAutoAcquire.isEnabled(context)) {
-            try {
-                val adbTransport = AdbProotService.reuseAcquiredTransport(context)
-                if (adbTransport != null) {
-                    onProgress(2, "复用已获取的 ADB 启动 Ubuntu（不再重新获取）…")
-                    val adbResult = AdbProotService.launchViaTransport(context, adbTransport, onProgress)
-                    if (adbResult.status != UbuntuService.Status.ERROR) return adbResult
-                    onProgress(0, "ADB 启动 Ubuntu 失败（${adbResult.message}），退回纯 proot…")
-                } else {
-                    onProgress(0, "未获取到可用 ADB，走纯 proot…")
-                }
-            } catch (e: Throwable) {
-                Log.e("ProotUbuntuService", "复用 ADB 启动异常，已忽略并退回纯 proot", e)
+        // 注意：不依赖「ADB 自动获取」开关——该开关只控制开 App/开机时的自动获取行为；
+        // 启动本身总是先尝试复用 ADB。收紧固件上纯 proot（untrusted_app exec app_data_file）
+        // 会被 SELinux 拒绝（EACCES rc=126），无 root 设备必须走 ADB 通道。
+        try {
+            val adbTransport = AdbProotService.reuseAcquiredTransport(context)
+            if (adbTransport != null) {
+                onProgress(2, "复用已获取的 ADB 启动 Ubuntu…")
+                val adbResult = AdbProotService.launchViaTransport(context, adbTransport, onProgress)
+                if (adbResult.status != UbuntuService.Status.ERROR) return adbResult
+                onProgress(0, "ADB 启动 Ubuntu 失败（${adbResult.message}），退回纯 proot…")
+            } else {
+                onProgress(0, "未获取到可用 ADB，走纯 proot（收紧固件可能被 SELinux 拒绝，建议先获取 ADB）…")
             }
-        } else {
-            onProgress(0, "已关闭 ADB 自动获取，直接纯 proot…")
+        } catch (e: Throwable) {
+            Log.e("ProotUbuntuService", "复用 ADB 启动异常，已忽略并退回纯 proot", e)
         }
 
         // 纯 proot（本地，无需 root/adb）

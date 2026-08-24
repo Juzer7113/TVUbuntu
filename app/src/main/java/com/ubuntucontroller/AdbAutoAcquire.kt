@@ -71,10 +71,11 @@ object AdbAutoAcquire {
         onProgress: (String) -> Unit = {},
         onDone: (Result) -> Unit = {}
     ) {
-        val progress: (String) -> Unit = { msg -> mainHandler.post { onProgress(msg) } }
-        val done: (Result) -> Unit = { r -> mainHandler.post { onDone(r) } }
+        val progress: (String) -> Unit = { msg -> mainHandler.post { onProgress(msg) }; RuntimeLog.append("adb", msg) }
+        val done: (Result) -> Unit = { r -> RuntimeLog.append("adb", "获取结果: success=${r.success} mode=${r.mode} msg=${r.message}"); mainHandler.post { onDone(r) } }
 
         Thread {
+            RuntimeLog.append("adb", "自动获取 ADB 开始")
             // 1) 尽量开启无障碍自动点击（无 WRITE_SECURE_SETTINGS 时静默失败，退化为手动点）
             try { AdbAccessibilityHelper.tryEnable(context) } catch (_: Throwable) {}
 
